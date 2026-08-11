@@ -118,6 +118,70 @@ def is_retrievable_table(conn, doc_id, table_id):
     return False
 
 
+def _is_number(v):
+    try:
+        float(str(v).strip())
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
+def list_numeric_cells(conn, doc_id, table_id, limit=40):
+    """Enumerate a table's numeric cells with the labels a human would use to find them.
+
+    Returns list of {row, col, value, unit, header, row_label, section}.
+
+    `section` matters and is not decoration. Statistical tables routinely stack several metric
+    blocks under one detected table — FDIC Table V-A p12 carries "Percent of Loans 30-89 Days
+    Past Due", "Percent of Loans Noncurrent" and "Percent of Loans Charged-Off" one after
+    another, each repeating the SAME row labels ("Construction and development", ...). Without
+    the section, a row label is ambiguous across metrics, and the planner will pick the first
+    match. That produced a real, confidently-cited WRONG answer during Phase 2 testing: asked
+    for the noncurrent rate, the system returned 0.38 (the 30-89-day rate) instead of 0.60,
+    citing a genuine cell with a genuine-looking row label at confidence 0.753.
+    A section header is detected as a row whose only populated cell is a non-numeric label.
+    """
+    rows = conn.execute(
+        "SELECT row, col, value, unit, header FROM tables WHERE doc_id = ? AND table_id = ? "
+        "AND value IS NOT NULL AND value != '' ORDER BY row, col",
+        (doc_id, table_id),
+    ).fetchall()
+
+    by_row = {}
+    for r, c, value, unit, header in rows:
+        by_row.setdefault(r, []).append((c, value, unit, header))
+
+    # Row label = leftmost non-numeric text cell on the row. Section header = a row that has
+    # exactly one populated, non-numeric cell (a banner spanning the block beneath it).
+    row_labels, section_at = {}, {}
+    for r, cells in by_row.items():
+        text_cells = [(c, v) for c, v, _u, _h in cells if not _is_number(v)]
+        if text_cells:
+            row_labels[r] = " ".join(str(text_cells[0][1]).split())[:60]
+        if len(cells) == 1 and text_cells:
+            section_at[r] = row_labels[r]
+
+    def section_for(r):
+        prior = [k for k in section_at if k < r]
+        return section_at[max(prior)] if prior else ""
+
+    out = []
+    for r, c, value, unit, header in rows:
+        if not _is_number(value):
+            continue
+        if r in section_at:
+            continue
+        out.append({
+            "row": r, "col": c, "value": str(value).strip(), "unit": unit,
+            "header": " ".join(str(header or "").split())[:50],
+            "row_label": row_labels.get(r, ""),
+            "section": section_for(r),
+        })
+        if len(out) >= limit:
+            break
+    return out
+
+
 def build_table_previews(conn):
     """One preview string per RETRIEVABLE table: doc title + header row + row labels."""
     previews = []

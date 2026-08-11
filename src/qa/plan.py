@@ -7,26 +7,48 @@ running Python over SQLite cells (constraint #2).
 from .compute import SUPPORTED_OPS, CellRef
 from .llm import extract_json, generate_text
 
-# Candidates are labelled TABLE 1..N and the model returns that integer, NOT a raw id string.
-# Empirically necessary: asked for raw ids, the 7B model returned the doc_id in the table_id
-# field, which the allow-list guard correctly rejected — a correct refusal, but a pointless one.
-# An integer label removes the whole class of id-transcription error.
+# DECISION: how the planner addresses cells
+# Default: the model selects from an ENUMERATED list of that table's numeric cells by integer
+# id — `[7] 254.51  (row: "2025/26 (Est.)" | column: "Ending Stocks")` — rather than emitting a
+# raw (row, col) coordinate pair.
+#
+# Why, empirically: asking a 7B model for coordinates against a rendered grid failed repeatedly
+# and in a specific way — it kept naming cells that were blank or out of range
+# ("cell is blank: .../p9_ft0 r15c4", "cell not found: .../p35_t1 r1c1"). Text-strategy fallback
+# tables are sparse and irregular, so 2D coordinate arithmetic over them is exactly the kind of
+# spatial bookkeeping small models are worst at. Enumerating the *populated numeric cells* and
+# letting the model pick one by id turns a 2D reasoning problem into a selection problem, and
+# makes an out-of-range pick structurally impossible rather than merely detectable.
+#
+# What this does NOT change: the model still never emits the number. It names a cell id; Python
+# resolves that id to (doc, table, row, col), fetches the stored value, and does the arithmetic.
+# Constraint #2 is untouched — arguably strengthened, since the model can now only ever point at
+# a cell that genuinely exists and genuinely holds a number.
+#
+# Rejected alternative: keep raw coordinates and just tell the model harder not to pick blanks.
+# Tried in effect (blank-lane suppression in render_table_grid); it reduced but did not eliminate
+# the failure, because blank *intersections* of populated rows and columns still exist.
+# Also retained from an earlier fix: candidate tables are labelled TABLE 1..N and selected by
+# integer, after the model was observed returning a doc_id in the table_id field.
 PLAN_SYSTEM = (
     "You are a planning component in a document-QA system. You NEVER compute or state numeric "
-    "answers — a separate Python function does all arithmetic. Your only job is to identify "
-    "which table cells the answer depends on and which operation combines them.\n\n"
+    "answers — a separate Python function does all arithmetic. Your only job is to pick which "
+    "already-extracted table cells the answer depends on, and which operation combines them.\n\n"
     "Reply with ONLY a JSON object, no prose, in exactly this form:\n"
-    '{"table": <integer label of the chosen table>, "operation": "<op>", '
-    '"cells": [{"row": <int>, "col": <int>}], "reasoning": "<one short sentence>"}\n\n'
+    '{"table": <table number>, "operation": "<op>", "cells": [<cell id>], '
+    '"reasoning": "<one short sentence>"}\n\n'
     f"Valid operations: {', '.join(sorted(SUPPORTED_OPS))}.\n"
-    "- lookup: exactly 1 cell (read a single value)\n"
-    "- diff / ratio / pct_change: exactly 2 cells, ordered [first, second]. "
+    "- lookup: exactly 1 cell id\n"
+    "- diff / ratio / pct_change: exactly 2 cell ids, ordered [first, second]. "
     "For pct_change the order is [old, new].\n"
-    "- sum / mean / max / min: 2 or more cells\n\n"
-    '"table" must be one of the integer labels shown (e.g. 1, 2, 3). '
-    "Row and column indices are shown in the grid as r0, r1, ... and c0, c1, ... "
-    "Use those exact indices. Pick the cell containing the DATA VALUE, never the row label or "
-    "the column header."
+    "- sum / mean / max / min: 2 or more cell ids\n\n"
+    "Each candidate table lists its available cells as:\n"
+    '  [<cell id>] <value>  (row: "<row label>" | column: "<column header>" '
+    '| section: "<section header>")\n'
+    "Choose cell ids ONLY from the list shown for the table you select. "
+    "Match the row label, column header AND section against what the question asks for. "
+    "The SAME row label often repeats under several sections measuring different things — "
+    "the section decides which metric a number is, so check it before choosing."
 )
 
 PLAN_TEMPLATE = """Question: {question}
@@ -35,26 +57,36 @@ Candidate tables:
 
 {tables}
 
-Return the JSON plan identifying the cells needed to answer the question."""
+Return the JSON plan naming the table number and the cell id(s) needed."""
 
 
-def build_plan_prompt(question, candidates, conn, max_rows=20, max_cols=10):
-    """Returns (prompt, labelled) where labelled maps integer label -> candidate."""
-    from .table_index import render_table_grid
+def build_plan_prompt(question, candidates, conn, max_cells=40):
+    """Returns (prompt, labelled).
+
+    labelled maps table label -> {"candidate": ..., "cells": {cell_id: cell_dict}}.
+    """
+    from .table_index import list_numeric_cells
 
     blocks = []
     labelled = {}
     for cand in candidates:
-        grid = render_table_grid(
-            conn, cand["doc_id"], cand["table_id"], max_rows=max_rows, max_cols=max_cols,
-        )
-        if not grid.strip():
+        cells = list_numeric_cells(conn, cand["doc_id"], cand["table_id"], limit=max_cells)
+        if not cells:
             continue
         label = len(labelled) + 1
-        labelled[label] = cand
-        blocks.append(
-            f'=== TABLE {label} === (from {cand["doc_id"]}, page {cand["page"]})\n{grid}'
-        )
+        # cell_id is 1-based and scoped to this table; the map back to (row, col) stays in
+        # Python so the model can never address a cell that does not exist.
+        labelled[label] = {"candidate": cand, "cells": {i + 1: c for i, c in enumerate(cells)}}
+
+        lines = [f'=== TABLE {label} === (from {cand["doc_id"]}, page {cand["page"]})']
+        for i, c in enumerate(cells, start=1):
+            unit = f" {c['unit']}" if c["unit"] else ""
+            section = f' | section: "{c["section"]}"' if c.get("section") else ""
+            lines.append(
+                f'  [{i}] {c["value"]}{unit}  (row: "{c["row_label"]}" | '
+                f'column: "{c["header"]}"{section})'
+            )
+        blocks.append("\n".join(lines))
     return PLAN_TEMPLATE.format(question=question, tables="\n\n".join(blocks)), labelled
 
 
@@ -81,26 +113,39 @@ def parse_plan(raw_response, labelled):
             f"tables shown — refusing to compute over a table the planner invented"
         )
 
-    chosen = labelled[label]
+    entry = labelled[label]
+    chosen, cell_lookup = entry["candidate"], entry["cells"]
     doc_id, table_id = chosen["doc_id"], chosen["table_id"]
 
     raw_cells = data.get("cells")
     if not isinstance(raw_cells, list) or not raw_cells:
         return None, "plan contained no cell references"
 
-    cells = []
+    cells, selected = [], []
     for c in raw_cells:
-        if not isinstance(c, dict):
-            return None, f"malformed cell reference {c!r}"
+        # Accept a bare id; also tolerate {"id": n} / {"cell": n} shapes small models emit.
+        if isinstance(c, dict):
+            c = c.get("id", c.get("cell", c.get("cell_id")))
         try:
-            row, col = int(c["row"]), int(c["col"])
-        except (KeyError, TypeError, ValueError):
-            return None, f"cell reference missing integer row/col: {c!r}"
-        cells.append(CellRef(doc_id=doc_id, table_id=table_id, row=row, col=col))
+            cell_id = int(c)
+        except (TypeError, ValueError):
+            return None, f"cell reference was not an integer cell id: {c!r}"
+
+        if cell_id not in cell_lookup:
+            return None, (
+                f"plan referenced cell id {cell_id}, which is not among the "
+                f"{len(cell_lookup)} cells listed for TABLE {label} — refusing to compute "
+                f"over a cell the planner invented"
+            )
+        info = cell_lookup[cell_id]
+        cells.append(CellRef(doc_id=doc_id, table_id=table_id, row=info["row"], col=info["col"]))
+        selected.append(
+            f'[{cell_id}] {info["value"]} (row "{info["row_label"]}" / col "{info["header"]}")'
+        )
 
     return {
         "doc_id": doc_id, "table_id": table_id, "page": chosen.get("page"),
-        "operation": operation, "cells": cells,
+        "operation": operation, "cells": cells, "selected": selected,
         "reasoning": str(data.get("reasoning", ""))[:300],
     }, None
 

@@ -193,3 +193,63 @@ wrong that the user corrected. Feeds the AI-disclosure section of `MEMO.md`.
   to answer** rather than by producing a wrong number. The constraint-#2 design (model plans,
   Python computes, refuse on any mismatch) turned four separate silent-corruption paths into
   four loud, diagnosable failures.
+
+### Bug 5 / redesign — cell addressing changed from coordinates to enumerated selection
+
+- Blank-lane suppression reduced but did not eliminate the blank-cell failure, because blank
+  *intersections* of populated rows and columns still exist. Rather than keep patching, changed
+  the addressing scheme: the planner now picks from an **enumerated list of that table's actual
+  numeric cells** — `[7] 254.51 (row: "2025/26 (Est.)" | column: "Ending Stocks")` — and returns
+  a cell id. Python maps the id back to (row, col).
+- This makes an out-of-range or blank selection **structurally impossible** rather than merely
+  detectable, and turns a 2D spatial-reasoning task (which small models are weak at) into a
+  selection task. Constraint #2 is unaffected — arguably strengthened, since the model can now
+  only ever point at a cell that exists and holds a number. Guards retained and verified: an
+  invented cell id is still refused with an explicit message.
+- **What building this exposed (the more important finding):** the enumerated view makes cell
+  *labels* visible, and they are poor on text-fallback tables — WASDE p8 cells carry row labels
+  like `"Total G"` and column headers like `"e 2026"`, i.e. the fallback recovers **values but
+  fragments the labels that identify them**. Lines-strategy tables are clean by comparison
+  (FDIC p13: row `"Construction and development"`, column `"All Insured Institutions"`).
+- Split of the 260 retrievable tables: **198 lines-strategy (good labels) vs 62 text-fallback
+  (fragmented labels)**. Consequence for Phase 3, recorded now so the gold set is not built on
+  sand: **numeric gold questions should be drawn primarily from lines-strategy tables**, and any
+  question drawn from a fallback table needs its cell verified against the source PDF by eye.
+  The fallback's value is that it stopped whole documents from being invisible; it is not a
+  source of clean, self-describing cells.
+
+### THE most important finding so far: a confidently-cited WRONG answer
+
+- The numeric path finally produced a complete answer end-to-end: question "What was the
+  noncurrent loan rate for construction and development loans at all insured institutions?" →
+  **0.38**, `operation=lookup`, cited to `fdic_quarterly_banking_profile_2024q1 p12 p12_t0 r4c1`,
+  **confidence 0.753**, with a fluent planner rationale naming the right row and column.
+- I checked it against the source PDF instead of accepting it. **It is wrong.** The true answer
+  is **0.60**. Cell r4c1 does hold 0.38, and its row label really is "Construction and
+  development" — but that row sits under the section banner **"Percent of Loans 30-89 Days Past
+  Due"**, not "Percent of Loans Noncurrent". The system returned a different metric's number,
+  with a real citation to a real cell, at moderate-high confidence. This is precisely the failure
+  mode the whole project exists to prevent, and it survived every guard built so far.
+- **Mechanism (two compounding defects):**
+  1. **No section context in the schema.** `tables(...)` records a *column* `header` but nothing
+     for the *section banner* that spans a block of rows. FDIC Table V-A stacks several metric
+     blocks in one detected table, each repeating identical row labels, so "Construction and
+     development" is ambiguous across metrics and the planner took the first match.
+  2. **An entire section was silently dropped by extraction.** "Percent of Loans Noncurrent"
+     exists in the page text (Construction and development = 0.60) but appears in **neither**
+     `p12_t0` nor `p13_t0`. Only three of the four sections survived. This is another instance of
+     the silent-partial-extraction class flagged earlier as undetected by the breakage log —
+     found here only because I chased a wrong answer back to source.
+- Partial fix applied: `list_numeric_cells` now detects section banners (a row whose only
+  populated cell is a non-numeric label) and attaches `section` to every enumerated cell; the
+  planner prompt now tells the model the same row label repeats across sections and that the
+  section decides the metric. Verified working — "Construction and development" at col 1 now
+  resolves distinctly to 0.38 (30-89 days) vs 0.04 (charged-off).
+- **Not fixed, and stated plainly:** the dropped Noncurrent section is still missing, so this
+  specific question remains unanswerable from the store. The fix removes the *ambiguity* defect,
+  not the *missing data* defect. Retrieval/extraction for multi-section tables needs more work
+  before the Phase 3 gold set is finalised.
+- Consequence for the confidence formula: confidence 0.753 on a wrong answer shows the current
+  formula measures *retrieval agreement and path auditability*, not correctness. It is not
+  calibrated, and Phase 4's "what verifies the verifier" section should say so with this example
+  rather than claiming a calibration the numbers do not support.
