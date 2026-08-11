@@ -40,6 +40,8 @@ Never flattens a table into prose (constraint #4) — every cell keeps its own
 # at all — but it is NOT clean recovery, and any cell used as gold-set ground truth must be
 # eyeballed against the source PDF rather than trusted because it is in the store.
 """
+import bisect
+
 import pdfplumber
 
 from .parse_cell import parse_cell
@@ -102,17 +104,201 @@ def _store_table(cell_rows, doc_id, page_num, table_id, raw_table, breakages, ex
             ))
 
 
+# ---------------------------------------------------------------------------
+# Label-loss repair pass
+# ---------------------------------------------------------------------------
+# THE DEFECT THIS REPAIRS (found by chasing one wrong answer back to source):
+# On FDIC Table V-A (p12-13) the lines strategy produced rows that alternate between a
+# fully-populated labelled row and a "vacant label" row — col0 empty, but a real value sitting
+# in col1. The vacant rows are not noise: they are the second half of a visually two-line row
+# whose label pdfplumber dropped. Worse, the SECTION banners between metric blocks
+# ("Percent of Loans Noncurrent**") were dropped entirely, so three of four blocks in that table
+# merged into their neighbours.
+#
+# The visible consequence: asked for the noncurrent construction-and-development rate, the QA
+# path returned 0.38 (the 30-89-day figure) instead of 0.60, cited to a real cell, at confidence
+# 0.753. The number it needed was present in the store the whole time, at col1 of a vacant-label
+# row, unreachable because nothing said what it was.
+#
+# HOW THE REPAIR WORKS: reconstruct the table from page.extract_words() — clustering words into
+# rows by their `top` coordinate (ROW_CLUSTER_TOLERANCE) and bucketing them into columns by the
+# page's own vertical rule x-positions. Deliberately NOT via find_tables()/cell objects, since
+# those are the very structures that lost the labels.
+#
+# WHY IT IS A REPAIR AND NOT A REPLACEMENT: it only runs on tables that exhibit the vacant-label
+# symptom. Tables that already carry complete labels are left exactly as the lines strategy
+# produced them, so a fully-labelled table cannot regress. Anything the repair cannot resolve is
+# logged to the breakage log rather than left to persist silently the way this defect did.
+ROW_CLUSTER_TOLERANCE = 3.0   # pt; empirically tuned - see AI_LOG before/after diffs
+MIN_VERTICAL_RULES = 2        # need at least 2 rules to define columns
+MIN_VACANT_ROWS = 2           # below this, not worth suspecting systematic label loss
+
+
+LABEL_COLS = (0, 1)      # some publishers put a line number in col0 and the label in col1
+HEADER_ZONE_NUMERICS = 3  # first row with this many numerics ends the header zone
+
+
+def _numeric_cols(cols):
+    out = []
+    for c, v in cols.items():
+        if v is None or str(v).strip() == "":
+            continue
+        try:
+            float(str(v).strip())
+        except ValueError:
+            continue
+        out.append(c)
+    return out
+
+
+def _vacant_label_rows(table_rows):
+    """Rows carrying data values that have no row label anywhere in the label columns.
+
+    Precision matters more than recall here. An over-firing detector floods the breakage log
+    with noise, and a log that cries wolf is its own kind of dishonesty — it makes the real
+    entries unfindable. Two exclusions, both established empirically:
+
+    - **Header-zone rows are skipped.** Multi-tier column headers legitimately have no row
+      label (BEA GDP p10 rows 0-3 are stacked header tiers). The header zone ends at the first
+      row carrying HEADER_ZONE_NUMERICS numeric values.
+    - **The label may live in col0 OR col1.** BEA tables put a line number in col0 and the
+      actual label in col1 ("43 | Net exports of goods and services"), so a col0-only test
+      reported every BEA data row as label loss. Checking LABEL_COLS fixed that.
+
+    Without these, the detector reported 284 "unlabelled" rows on a single BEA document, nearly
+    all false positives.
+    """
+    by_row = {}
+    for _d, _p, _t, r, c, value, _u, _h in table_rows:
+        by_row.setdefault(r, {})[c] = value
+    if not by_row:
+        return []
+
+    ordered = sorted(by_row)
+    first_data = next(
+        (r for r in ordered if len(_numeric_cols(by_row[r])) >= HEADER_ZONE_NUMERICS), None
+    )
+    if first_data is None:
+        return []
+
+    vacant = []
+    for r in ordered:
+        if r < first_data:
+            continue
+        cols = by_row[r]
+        numeric_here = _numeric_cols(cols)
+        if not numeric_here:
+            continue
+        has_label = False
+        for lc in LABEL_COLS:
+            v = cols.get(lc)
+            if v is None or str(v).strip() == "":
+                continue
+            if lc not in numeric_here:   # a text cell in a label column = a label
+                has_label = True
+                break
+        if not has_label:
+            vacant.append(r)
+    return sorted(vacant)
+
+
+def _column_bounds(page):
+    """Column boundaries from the page's own vertical rules (plus the rightmost edge)."""
+    rules = sorted({round(l["x0"], 1) for l in page.lines if abs(l["x0"] - l["x1"]) < 0.6})
+    if len(rules) < MIN_VERTICAL_RULES:
+        return None
+    right_edges = [round(e["x0"], 1) for e in page.edges if e.get("orientation") == "v"]
+    right = max(right_edges) if right_edges else None
+    if right is not None and right > rules[-1]:
+        rules = rules + [right]
+    return rules
+
+
+def _cluster_words_into_rows(words, tolerance=ROW_CLUSTER_TOLERANCE):
+    rows = []
+    for w in sorted(words, key=lambda w: (w["top"], w["x0"])):
+        if rows and abs(w["top"] - rows[-1]["top"]) <= tolerance:
+            rows[-1]["words"].append(w)
+        else:
+            rows.append({"top": w["top"], "words": [w]})
+    return rows
+
+
+def _repair_table_from_words(page, doc_id, page_num, table_id):
+    """Rebuild one table from raw words + vertical rules. Returns cell_rows or None."""
+    bounds = _column_bounds(page)
+    if not bounds:
+        return None
+    try:
+        words = page.extract_words(use_text_flow=False)
+    except Exception:
+        return None
+    if not words:
+        return None
+
+    clustered = _cluster_words_into_rows(words)
+
+    grid = []
+    for entry in clustered:
+        cols = {}
+        for w in entry["words"]:
+            centre = (w["x0"] + w["x1"]) / 2
+            col = 0 if centre < bounds[0] else bisect.bisect_right(bounds, centre)
+            cols.setdefault(col, []).append(w["text"])
+        grid.append({c: " ".join(v) for c, v in cols.items()})
+
+    # Header zone = rows before the first row carrying several numeric values. Their text is
+    # concatenated per column to form that column's header, so multi-line stacked headers
+    # ("All Insured" / "Institutions") survive as one label.
+    def numeric_count(cols):
+        n = 0
+        for c, text in cols.items():
+            if c == 0:
+                continue
+            value, _unit = parse_cell(text)
+            if value is not None:
+                try:
+                    float(value)
+                    n += 1
+                except ValueError:
+                    pass
+        return n
+
+    first_data = next((i for i, cols in enumerate(grid) if numeric_count(cols) >= 3), None)
+    if first_data is None:
+        return None
+
+    headers = {}
+    for cols in grid[:first_data]:
+        for c, text in cols.items():
+            headers[c] = f"{headers.get(c, '')} {text}".strip()
+
+    cell_rows = []
+    for r_idx, cols in enumerate(grid):
+        for c_idx, text in sorted(cols.items()):
+            value, unit = parse_cell(text)
+            cell_rows.append((
+                doc_id, page_num, table_id, r_idx, c_idx, value, unit,
+                headers.get(c_idx, ""),
+            ))
+    return cell_rows or None
+
+
 def extract_tables_from_pdf(pdf_path, doc_id):
     """Returns (cell_rows, breakages, stats).
 
     cell_rows: list of (doc_id, page, table_id, row, col, value, unit, header)
     breakages: list of {doc_id, page, table_id, reason} — logged, never silently dropped
                (constraint #5).
-    stats:     {"lines_tables", "fallback_tables", "fallback_pages", "fallback_cells"}
+    stats:     counts for lines/fallback tables plus the label-loss repair pass.
     """
     cell_rows = []
     breakages = []
-    stats = {"lines_tables": 0, "fallback_tables": 0, "fallback_pages": 0, "fallback_cells": 0}
+    stats = {
+        "lines_tables": 0, "fallback_tables": 0, "fallback_pages": 0, "fallback_cells": 0,
+        "vacant_label_tables": 0, "repaired_tables": 0, "repaired_rows_recovered": 0,
+        "unresolved_vacant_rows": 0,
+    }
 
     with pdfplumber.open(pdf_path) as pdf:
         for page_num, page in enumerate(pdf.pages, start=1):
@@ -136,7 +322,55 @@ def extract_tables_from_pdf(pdf_path, doc_id):
                                   "detected as a table)",
                     })
                     continue
-                _store_table(cell_rows, doc_id, page_num, table_id, raw_table, breakages, "lines")
+                table_rows = []
+                _store_table(table_rows, doc_id, page_num, table_id, raw_table, breakages, "lines")
+
+                # Completeness check (constraint #5): a value with no label is unreachable data.
+                vacant = _vacant_label_rows(table_rows)
+                if len(vacant) >= MIN_VACANT_ROWS:
+                    stats["vacant_label_tables"] += 1
+                    repaired = _repair_table_from_words(page, doc_id, page_num, table_id)
+                    repaired_vacant = _vacant_label_rows(repaired) if repaired else None
+
+                    if repaired and len(repaired_vacant) < len(vacant):
+                        stats["repaired_tables"] += 1
+                        stats["repaired_rows_recovered"] += len(vacant) - len(repaired_vacant)
+                        breakages.append({
+                            "doc_id": doc_id, "page": page_num, "table_id": table_id,
+                            "reason": (
+                                f"REPAIRED: {len(vacant)} vacant-label row(s) had values but no "
+                                f"row label (lines strategy dropped the labels); rebuilt from "
+                                f"page words + {len(_column_bounds(page) or [])} vertical rules, "
+                                f"leaving {len(repaired_vacant)}"
+                            ),
+                        })
+                        table_rows = repaired
+                        if repaired_vacant:
+                            stats["unresolved_vacant_rows"] += len(repaired_vacant)
+                            breakages.append({
+                                "doc_id": doc_id, "page": page_num, "table_id": table_id,
+                                "reason": (
+                                    f"INCOMPLETE: {len(repaired_vacant)} row(s) still carry "
+                                    f"values with no label after repair (rows "
+                                    f"{repaired_vacant[:8]}) — those values are present in the "
+                                    f"store but not addressable by label"
+                                ),
+                            })
+                    else:
+                        stats["unresolved_vacant_rows"] += len(vacant)
+                        why = ("no vertical rules on page to define columns"
+                               if _column_bounds(page) is None else
+                               "repair produced no improvement")
+                        breakages.append({
+                            "doc_id": doc_id, "page": page_num, "table_id": table_id,
+                            "reason": (
+                                f"INCOMPLETE: {len(vacant)} row(s) hold values with no row label "
+                                f"(rows {vacant[:8]}) and repair did not resolve them ({why}) — "
+                                f"those values are in the store but not addressable by label"
+                            ),
+                        })
+
+                cell_rows.extend(table_rows)
                 stored_on_page += 1
                 stats["lines_tables"] += 1
 

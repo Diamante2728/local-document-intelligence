@@ -4,26 +4,28 @@
 
 `tables` / `cells` are totals; the `via text-fallback` columns show how much of that total was recovered by the text-strategy fallback rather than the default lines strategy (see the DECISION note in `src/ingest/tables.py`).
 
-| doc_id | pages | tables | table cells | via text-fallback (tables/cells) | prose chunks | breakage log entries |
-|---|---|---|---|---|---|---|
-| bea_gdp_2024q1_second_estimate | 20 | 17 | 9379 | 0 / 0 | 125 | 1 |
-| bea_international_transactions_2024q1 | 24 | 19 | 10261 | 0 / 0 | 158 | 0 |
-| bea_personal_income_outlays_2024_04 | 10 | 10 | 2591 | 1 / 420 | 45 | 1 |
-| census_ft900_trade_2024_03 | 63 | 68 | 2266 | 0 / 0 | 373 | 0 |
-| census_housing_vacancies | 13 | 12 | 737 | 1 / 448 | 66 | 4 |
-| census_poverty_2022_p60_280 | 67 | 45 | 3708 | 3 / 2162 | 396 | 15 |
-| eia_short_term_energy_outlook_2025_05 | 59 | 122 | 11627 | 1 / 175 | 370 | 8 |
-| epa_automotive_trends_2024_exec_summary | 17 | 17 | 3669 | 0 / 0 | 43 | 4 |
-| fdic_quarterly_banking_profile_2024q1 | 42 | 94 | 10116 | 0 / 0 | 241 | 2 |
-| fed_monetary_policy_report_2024_03 | 71 | 17 | 12091 | 12 / 11960 | 263 | 95 |
-| fed_survey_consumer_finances_2022 | 58 | 22 | 384 | 1 / 135 | 209 | 27 |
-| oecd_economic_outlook_116_annex | 69 | 289 | 10958 | 8 / 5405 | 532 | 11 |
-| treasury_monthly_statement_2024_06 | 40 | 69 | 16269 | 1 / 621 | 199 | 8 |
-| usda_agricultural_prices_2025_09 | 52 | 85 | 2025 | 3 / 1027 | 288 | 3 |
-| usda_wasde_2026_06 | 40 | 32 | 20353 | 28 / 20024 | 175 | 29 |
-| worldbank_commodity_markets_2025_04 | 68 | 21 | 2402 | 3 / 1600 | 382 | 49 |
+| doc_id | pages | tables | table cells | via text-fallback (tables/cells) | label-repair (repaired/symptomatic) | rows still unlabelled | prose chunks | breakage log entries |
+|---|---|---|---|---|---|---|---|---|
+| bea_gdp_2024q1_second_estimate | 20 | 17 | 9379 | 0 / 0 | 0 / 5 | 10 | 125 | 6 |
+| bea_international_transactions_2024q1 | 24 | 19 | 10261 | 0 / 0 | 0 / 1 | 8 | 158 | 1 |
+| bea_personal_income_outlays_2024_04 | 10 | 10 | 2591 | 1 / 420 | 0 / 0 | 0 | 45 | 1 |
+| census_ft900_trade_2024_03 | 63 | 68 | 2266 | 0 / 0 | 0 / 5 | 17 | 373 | 5 |
+| census_housing_vacancies | 13 | 12 | 847 | 1 / 570 | 0 / 0 | 0 | 62 | 4 |
+| census_poverty_2022_p60_280 | 67 | 45 | 3708 | 3 / 2162 | 0 / 0 | 0 | 396 | 15 |
+| eia_short_term_energy_outlook_2025_05 | 59 | 122 | 11627 | 1 / 175 | 0 / 4 | 51 | 370 | 12 |
+| epa_automotive_trends_2024_exec_summary | 17 | 17 | 3661 | 0 / 0 | 2 / 5 | 12 | 43 | 11 |
+| fdic_quarterly_banking_profile_2024q1 | 42 | 94 | 9984 | 0 / 0 | 7 / 16 | 151 | 241 | 25 |
+| fed_monetary_policy_report_2024_03 | 71 | 17 | 12362 | 12 / 11960 | 2 / 2 | 0 | 263 | 97 |
+| fed_survey_consumer_finances_2022 | 58 | 22 | 384 | 1 / 135 | 0 / 0 | 0 | 209 | 27 |
+| oecd_economic_outlook_116_annex | 69 | 289 | 10958 | 8 / 5405 | 0 / 0 | 0 | 532 | 11 |
+| treasury_monthly_statement_2024_06 | 40 | 69 | 16269 | 1 / 621 | 0 / 0 | 0 | 199 | 8 |
+| usda_agricultural_prices_2025_09 | 52 | 85 | 2025 | 3 / 1027 | 0 / 0 | 0 | 288 | 3 |
+| usda_wasde_2026_06 | 40 | 32 | 20353 | 28 / 20024 | 0 / 0 | 0 | 175 | 29 |
+| worldbank_commodity_markets_2025_04 | 68 | 21 | 2402 | 3 / 1600 | 0 / 0 | 0 | 382 | 49 |
 
-**Corpus totals:** 16 documents, 713 pages, 939 tables, 118836 table cells (62 tables / 43977 cells recovered by text-strategy fallback), 3865 prose chunks, 257 breakage-log entries.
+**Corpus totals:** 16 documents, 713 pages, 939 tables, 119077 table cells (62 tables / 44099 cells recovered by text-strategy fallback), 3861 prose chunks, 304 breakage-log entries.
+
+**Label-loss repair:** 38 tables showed the vacant-label symptom (values present, row label dropped); 11 were rebuilt from page words + vertical rules. **249 rows still hold values with no label** — those values are in the store but cannot be addressed by label, and every one is itemised in the breakage log below as `INCOMPLETE:`.
 
 
 ## Sample tables (eyeball check: did numbers/units survive?)
@@ -145,7 +147,18 @@ Entries prefixed `RECOVERED:` are not failures — they record where the text-st
 | doc_id | page | table_id | reason |
 |---|---|---|---|
 | bea_gdp_2024q1_second_estimate | 1 | p1_t0 | extract_tables() returned an empty/all-blank table (lines strategy; usually a chart's axes/gridlines detected as a table) |
+| bea_gdp_2024q1_second_estimate | 8 | p8_t0 | INCOMPLETE: 2 row(s) hold values with no row label (rows [0, 1]) and repair did not resolve them (no vertical rules on page to define columns) — those values are in the store but not addressable by label |
+| bea_gdp_2024q1_second_estimate | 11 | p11_t0 | INCOMPLETE: 2 row(s) hold values with no row label (rows [0, 1]) and repair did not resolve them (no vertical rules on page to define columns) — those values are in the store but not addressable by label |
+| bea_gdp_2024q1_second_estimate | 16 | p16_t0 | INCOMPLETE: 2 row(s) hold values with no row label (rows [1, 2]) and repair did not resolve them (no vertical rules on page to define columns) — those values are in the store but not addressable by label |
+| bea_gdp_2024q1_second_estimate | 17 | p17_t0 | INCOMPLETE: 2 row(s) hold values with no row label (rows [1, 2]) and repair did not resolve them (no vertical rules on page to define columns) — those values are in the store but not addressable by label |
+| bea_gdp_2024q1_second_estimate | 19 | p19_t0 | INCOMPLETE: 2 row(s) hold values with no row label (rows [0, 1]) and repair did not resolve them (no vertical rules on page to define columns) — those values are in the store but not addressable by label |
+| bea_international_transactions_2024q1 | 24 | p24_t0 | INCOMPLETE: 8 row(s) hold values with no row label (rows [5, 7, 12, 17, 21, 25, 29, 33]) and repair did not resolve them (no vertical rules on page to define columns) — those values are in the store but not addressable by label |
 | bea_personal_income_outlays_2024_04 | 1 | None | RECOVERED: lines strategy found no usable table; text-strategy fallback recovered 1 table(s) — borderless/dot-leader layout |
+| census_ft900_trade_2024_03 | 27 | p27_t0 | INCOMPLETE: 4 row(s) hold values with no row label (rows [1, 2, 3, 4]) and repair did not resolve them (no vertical rules on page to define columns) — those values are in the store but not addressable by label |
+| census_ft900_trade_2024_03 | 29 | p29_t0 | INCOMPLETE: 4 row(s) hold values with no row label (rows [1, 2, 3, 4]) and repair did not resolve them (no vertical rules on page to define columns) — those values are in the store but not addressable by label |
+| census_ft900_trade_2024_03 | 36 | p36_t0 | INCOMPLETE: 3 row(s) hold values with no row label (rows [2, 3, 4]) and repair did not resolve them (no vertical rules on page to define columns) — those values are in the store but not addressable by label |
+| census_ft900_trade_2024_03 | 37 | p37_t0 | INCOMPLETE: 3 row(s) hold values with no row label (rows [2, 3, 4]) and repair did not resolve them (no vertical rules on page to define columns) — those values are in the store but not addressable by label |
+| census_ft900_trade_2024_03 | 38 | p38_t0 | INCOMPLETE: 3 row(s) hold values with no row label (rows [3, 4, 5]) and repair did not resolve them (no vertical rules on page to define columns) — those values are in the store but not addressable by label |
 | census_housing_vacancies | 2 | p2_t0 | extract_tables() returned an empty/all-blank table (lines strategy; usually a chart's axes/gridlines detected as a table) |
 | census_housing_vacancies | 2 | p2_t1 | extract_tables() returned an empty/all-blank table (lines strategy; usually a chart's axes/gridlines detected as a table) |
 | census_housing_vacancies | 2 | None | RECOVERED: lines strategy found no usable table; text-strategy fallback recovered 1 table(s) — borderless/dot-leader layout |
@@ -173,12 +186,46 @@ Entries prefixed `RECOVERED:` are not failures — they record where the text-st
 | eia_short_term_energy_outlook_2025_05 | 31 | p31_t2 | extract_tables() returned an empty/all-blank table (lines strategy; usually a chart's axes/gridlines detected as a table) |
 | eia_short_term_energy_outlook_2025_05 | 32 | p32_t0 | extract_tables() returned an empty/all-blank table (lines strategy; usually a chart's axes/gridlines detected as a table) |
 | eia_short_term_energy_outlook_2025_05 | 32 | p32_t1 | extract_tables() returned an empty/all-blank table (lines strategy; usually a chart's axes/gridlines detected as a table) |
+| eia_short_term_energy_outlook_2025_05 | 35 | p35_t0 | INCOMPLETE: 16 row(s) hold values with no row label (rows [0, 3, 5, 6, 7, 8, 9, 11]) and repair did not resolve them (no vertical rules on page to define columns) — those values are in the store but not addressable by label |
+| eia_short_term_energy_outlook_2025_05 | 45 | p45_t0 | INCOMPLETE: 8 row(s) hold values with no row label (rows [0, 7, 8, 9, 10, 11, 12, 13]) and repair did not resolve them (no vertical rules on page to define columns) — those values are in the store but not addressable by label |
+| eia_short_term_energy_outlook_2025_05 | 47 | p47_t0 | INCOMPLETE: 3 row(s) hold values with no row label (rows [0, 9, 10]) and repair did not resolve them (no vertical rules on page to define columns) — those values are in the store but not addressable by label |
+| eia_short_term_energy_outlook_2025_05 | 55 | p55_t0 | INCOMPLETE: 24 row(s) hold values with no row label (rows [0, 4, 6, 8, 10, 12, 14, 16]) and repair did not resolve them (no vertical rules on page to define columns) — those values are in the store but not addressable by label |
 | epa_automotive_trends_2024_exec_summary | 6 | p6_t0 | extract_tables() returned an empty/all-blank table (lines strategy; usually a chart's axes/gridlines detected as a table) |
 | epa_automotive_trends_2024_exec_summary | 6 | p6_t1 | extract_tables() returned an empty/all-blank table (lines strategy; usually a chart's axes/gridlines detected as a table) |
 | epa_automotive_trends_2024_exec_summary | 6 | p6_t2 | extract_tables() returned an empty/all-blank table (lines strategy; usually a chart's axes/gridlines detected as a table) |
+| epa_automotive_trends_2024_exec_summary | 11 | p11_t2 | REPAIRED: 10 vacant-label row(s) had values but no row label (lines strategy dropped the labels); rebuilt from page words + 26 vertical rules, leaving 2 |
+| epa_automotive_trends_2024_exec_summary | 11 | p11_t2 | INCOMPLETE: 2 row(s) still carry values with no label after repair (rows [5, 20]) — those values are present in the store but not addressable by label |
+| epa_automotive_trends_2024_exec_summary | 11 | p11_t3 | REPAIRED: 12 vacant-label row(s) had values but no row label (lines strategy dropped the labels); rebuilt from page words + 26 vertical rules, leaving 2 |
+| epa_automotive_trends_2024_exec_summary | 11 | p11_t3 | INCOMPLETE: 2 row(s) still carry values with no label after repair (rows [5, 20]) — those values are present in the store but not addressable by label |
+| epa_automotive_trends_2024_exec_summary | 14 | p14_t0 | INCOMPLETE: 3 row(s) hold values with no row label (rows [3, 4, 5]) and repair did not resolve them (repair produced no improvement) — those values are in the store but not addressable by label |
 | epa_automotive_trends_2024_exec_summary | 14 | p14_t1 | extract_tables() returned an empty/all-blank table (lines strategy; usually a chart's axes/gridlines detected as a table) |
+| epa_automotive_trends_2024_exec_summary | 16 | p16_t0 | INCOMPLETE: 3 row(s) hold values with no row label (rows [21, 23, 25]) and repair did not resolve them (repair produced no improvement) — those values are in the store but not addressable by label |
+| epa_automotive_trends_2024_exec_summary | 16 | p16_t3 | INCOMPLETE: 2 row(s) hold values with no row label (rows [3, 5]) and repair did not resolve them (repair produced no improvement) — those values are in the store but not addressable by label |
 | fdic_quarterly_banking_profile_2024q1 | 2 | p2_t1 | extract_tables() returned an empty/all-blank table (lines strategy; usually a chart's axes/gridlines detected as a table) |
+| fdic_quarterly_banking_profile_2024q1 | 8 | p8_t0 | REPAIRED: 40 vacant-label row(s) had values but no row label (lines strategy dropped the labels); rebuilt from page words + 11 vertical rules, leaving 15 |
+| fdic_quarterly_banking_profile_2024q1 | 8 | p8_t0 | INCOMPLETE: 15 row(s) still carry values with no label after repair (rows [32, 43, 60, 61, 63, 64, 66, 67]) — those values are present in the store but not addressable by label |
+| fdic_quarterly_banking_profile_2024q1 | 9 | p9_t0 | REPAIRED: 41 vacant-label row(s) had values but no row label (lines strategy dropped the labels); rebuilt from page words + 13 vertical rules, leaving 16 |
+| fdic_quarterly_banking_profile_2024q1 | 9 | p9_t0 | INCOMPLETE: 16 row(s) still carry values with no label after repair (rows [32, 43, 60, 61, 63, 64, 66, 67]) — those values are present in the store but not addressable by label |
+| fdic_quarterly_banking_profile_2024q1 | 10 | p10_t0 | REPAIRED: 40 vacant-label row(s) had values but no row label (lines strategy dropped the labels); rebuilt from page words + 11 vertical rules, leaving 16 |
+| fdic_quarterly_banking_profile_2024q1 | 10 | p10_t0 | INCOMPLETE: 16 row(s) still carry values with no label after repair (rows [32, 43, 60, 61, 63, 64, 66, 67]) — those values are present in the store but not addressable by label |
+| fdic_quarterly_banking_profile_2024q1 | 11 | p11_t0 | REPAIRED: 41 vacant-label row(s) had values but no row label (lines strategy dropped the labels); rebuilt from page words + 13 vertical rules, leaving 15 |
+| fdic_quarterly_banking_profile_2024q1 | 11 | p11_t0 | INCOMPLETE: 15 row(s) still carry values with no label after repair (rows [32, 43, 60, 61, 63, 64, 66, 67]) — those values are present in the store but not addressable by label |
+| fdic_quarterly_banking_profile_2024q1 | 12 | p12_t0 | REPAIRED: 26 vacant-label row(s) had values but no row label (lines strategy dropped the labels); rebuilt from page words + 11 vertical rules, leaving 1 |
+| fdic_quarterly_banking_profile_2024q1 | 12 | p12_t0 | INCOMPLETE: 1 row(s) still carry values with no label after repair (rows [69]) — those values are present in the store but not addressable by label |
+| fdic_quarterly_banking_profile_2024q1 | 13 | p13_t0 | REPAIRED: 26 vacant-label row(s) had values but no row label (lines strategy dropped the labels); rebuilt from page words + 13 vertical rules, leaving 1 |
+| fdic_quarterly_banking_profile_2024q1 | 13 | p13_t0 | INCOMPLETE: 1 row(s) still carry values with no label after repair (rows [71]) — those values are present in the store but not addressable by label |
+| fdic_quarterly_banking_profile_2024q1 | 18 | p18_t0 | INCOMPLETE: 5 row(s) hold values with no row label (rows [6, 8, 9, 12, 14]) and repair did not resolve them (no vertical rules on page to define columns) — those values are in the store but not addressable by label |
 | fdic_quarterly_banking_profile_2024q1 | 18 | p18_t1 | extract_tables() returned an empty/all-blank table (lines strategy; usually a chart's axes/gridlines detected as a table) |
+| fdic_quarterly_banking_profile_2024q1 | 23 | p23_t0 | INCOMPLETE: 5 row(s) hold values with no row label (rows [0, 2, 4, 6, 8]) and repair did not resolve them (no vertical rules on page to define columns) — those values are in the store but not addressable by label |
+| fdic_quarterly_banking_profile_2024q1 | 24 | p24_t1 | INCOMPLETE: 9 row(s) hold values with no row label (rows [1, 3, 5, 7, 9, 11, 13, 15]) and repair did not resolve them (repair produced no improvement) — those values are in the store but not addressable by label |
+| fdic_quarterly_banking_profile_2024q1 | 24 | p24_t5 | INCOMPLETE: 6 row(s) hold values with no row label (rows [1, 3, 5, 7, 9, 13]) and repair did not resolve them (repair produced no improvement) — those values are in the store but not addressable by label |
+| fdic_quarterly_banking_profile_2024q1 | 25 | p25_t1 | INCOMPLETE: 12 row(s) hold values with no row label (rows [1, 3, 5, 7, 9, 11, 13, 15]) and repair did not resolve them (repair produced no improvement) — those values are in the store but not addressable by label |
+| fdic_quarterly_banking_profile_2024q1 | 25 | p25_t2 | INCOMPLETE: 7 row(s) hold values with no row label (rows [1, 3, 5, 7, 9, 11, 13]) and repair did not resolve them (repair produced no improvement) — those values are in the store but not addressable by label |
+| fdic_quarterly_banking_profile_2024q1 | 26 | p26_t0 | REPAIRED: 21 vacant-label row(s) had values but no row label (lines strategy dropped the labels); rebuilt from page words + 8 vertical rules, leaving 1 |
+| fdic_quarterly_banking_profile_2024q1 | 26 | p26_t0 | INCOMPLETE: 1 row(s) still carry values with no label after repair (rows [71]) — those values are present in the store but not addressable by label |
+| fdic_quarterly_banking_profile_2024q1 | 27 | p27_t0 | INCOMPLETE: 8 row(s) hold values with no row label (rows [3, 5, 7, 9, 11, 13, 15, 17]) and repair did not resolve them (repair produced no improvement) — those values are in the store but not addressable by label |
+| fdic_quarterly_banking_profile_2024q1 | 27 | p27_t1 | INCOMPLETE: 8 row(s) hold values with no row label (rows [3, 5, 7, 9, 11, 13, 15, 17]) and repair did not resolve them (repair produced no improvement) — those values are in the store but not addressable by label |
+| fdic_quarterly_banking_profile_2024q1 | 28 | p28_t0 | INCOMPLETE: 26 row(s) hold values with no row label (rows [2, 4, 6, 8, 10, 12, 16, 18]) and repair did not resolve them (repair produced no improvement) — those values are in the store but not addressable by label |
 | fed_monetary_policy_report_2024_03 | 15 | None | RECOVERED: lines strategy found no usable table; text-strategy fallback recovered 1 table(s) — borderless/dot-leader layout |
 | fed_monetary_policy_report_2024_03 | 20 | None | RECOVERED: lines strategy found no usable table; text-strategy fallback recovered 1 table(s) — borderless/dot-leader layout |
 | fed_monetary_policy_report_2024_03 | 22 | p22_t0 | extract_tables() returned an empty/all-blank table (lines strategy; usually a chart's axes/gridlines detected as a table) |
@@ -208,6 +255,8 @@ Entries prefixed `RECOVERED:` are not failures — they record where the text-st
 | fed_monetary_policy_report_2024_03 | 37 | p37_t6 | extract_tables() returned an empty/all-blank table (lines strategy; usually a chart's axes/gridlines detected as a table) |
 | fed_monetary_policy_report_2024_03 | 37 | p37_t7 | extract_tables() returned an empty/all-blank table (lines strategy; usually a chart's axes/gridlines detected as a table) |
 | fed_monetary_policy_report_2024_03 | 37 | p37_t8 | extract_tables() returned an empty/all-blank table (lines strategy; usually a chart's axes/gridlines detected as a table) |
+| fed_monetary_policy_report_2024_03 | 44 | p44_t1 | REPAIRED: 9 vacant-label row(s) had values but no row label (lines strategy dropped the labels); rebuilt from page words + 5 vertical rules, leaving 0 |
+| fed_monetary_policy_report_2024_03 | 44 | p44_t2 | REPAIRED: 6 vacant-label row(s) had values but no row label (lines strategy dropped the labels); rebuilt from page words + 5 vertical rules, leaving 0 |
 | fed_monetary_policy_report_2024_03 | 45 | None | RECOVERED: lines strategy found no usable table; text-strategy fallback recovered 1 table(s) — borderless/dot-leader layout |
 | fed_monetary_policy_report_2024_03 | 52 | None | RECOVERED: lines strategy found no usable table; text-strategy fallback recovered 1 table(s) — borderless/dot-leader layout |
 | fed_monetary_policy_report_2024_03 | 53 | None | RECOVERED: lines strategy found no usable table; text-strategy fallback recovered 1 table(s) — borderless/dot-leader layout |

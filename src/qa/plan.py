@@ -70,7 +70,9 @@ def build_plan_prompt(question, candidates, conn, max_cells=40):
     blocks = []
     labelled = {}
     for cand in candidates:
-        cells = list_numeric_cells(conn, cand["doc_id"], cand["table_id"], limit=max_cells)
+        cells = list_numeric_cells(
+            conn, cand["doc_id"], cand["table_id"], limit=max_cells, query=question,
+        )
         if not cells:
             continue
         label = len(labelled) + 1

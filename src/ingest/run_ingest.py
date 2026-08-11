@@ -64,11 +64,17 @@ def ingest_all():
             "fallback_tables": table_stats["fallback_tables"],
             "fallback_cells": table_stats["fallback_cells"],
             "fallback_pages": table_stats["fallback_pages"],
+            "vacant_label_tables": table_stats["vacant_label_tables"],
+            "repaired_tables": table_stats["repaired_tables"],
+            "unresolved_vacant_rows": table_stats["unresolved_vacant_rows"],
         })
         print(f"  {num_pages} pages, {n_tables} tables ({len(table_rows)} cells), "
               f"{len(chunk_rows)} prose chunks, {len(table_breaks) + len(chunk_breaks)} breakages"
               f" [text-fallback recovered {table_stats['fallback_tables']} tables /"
-              f" {table_stats['fallback_cells']} cells on {table_stats['fallback_pages']} pages]")
+              f" {table_stats['fallback_cells']} cells on {table_stats['fallback_pages']} pages]"
+              f" [label-repair: {table_stats['repaired_tables']}/"
+              f"{table_stats['vacant_label_tables']} symptomatic tables repaired, "
+              f"{table_stats['unresolved_vacant_rows']} rows still unlabelled]")
 
     print(f"Building embedding index over {len(all_chunk_rows)} prose chunks...")
     if all_chunk_rows:
@@ -101,19 +107,22 @@ def write_ingestion_check(conn, doc_summaries, breakages, n_samples=8):
         "strategy (see the DECISION note in `src/ingest/tables.py`).\n"
     )
     lines.append("| doc_id | pages | tables | table cells | via text-fallback (tables/cells) | "
-                 "prose chunks | breakage log entries |")
-    lines.append("|---|---|---|---|---|---|---|")
+                 "label-repair (repaired/symptomatic) | rows still unlabelled | prose chunks | "
+                 "breakage log entries |")
+    lines.append("|---|---|---|---|---|---|---|---|---|")
     for s in doc_summaries:
         lines.append(
             f"| {s['doc_id']} | {s['num_pages']} | {s['n_tables']} | {s['n_table_cells']} | "
-            f"{s['fallback_tables']} / {s['fallback_cells']} | {s['n_chunks']} | "
-            f"{s['n_breakages']} |"
+            f"{s['fallback_tables']} / {s['fallback_cells']} | "
+            f"{s['repaired_tables']} / {s['vacant_label_tables']} | "
+            f"{s['unresolved_vacant_rows']} | {s['n_chunks']} | {s['n_breakages']} |"
         )
 
     totals = {
         k: sum(s[k] for s in doc_summaries)
         for k in ("num_pages", "n_tables", "n_table_cells", "n_chunks", "n_breakages",
-                  "fallback_tables", "fallback_cells")
+                  "fallback_tables", "fallback_cells", "vacant_label_tables",
+                  "repaired_tables", "unresolved_vacant_rows")
     }
     lines.append(
         f"\n**Corpus totals:** {len(doc_summaries)} documents, {totals['num_pages']} pages, "
@@ -121,6 +130,13 @@ def write_ingestion_check(conn, doc_summaries, breakages, n_samples=8):
         f"({totals['fallback_tables']} tables / {totals['fallback_cells']} cells recovered by "
         f"text-strategy fallback), {totals['n_chunks']} prose chunks, "
         f"{totals['n_breakages']} breakage-log entries.\n"
+    )
+    lines.append(
+        f"**Label-loss repair:** {totals['vacant_label_tables']} tables showed the vacant-label "
+        f"symptom (values present, row label dropped); {totals['repaired_tables']} were rebuilt "
+        f"from page words + vertical rules. **{totals['unresolved_vacant_rows']} rows still hold "
+        f"values with no label** — those values are in the store but cannot be addressed by "
+        f"label, and every one is itemised in the breakage log below as `INCOMPLETE:`.\n"
     )
 
     lines.append("\n## Sample tables (eyeball check: did numbers/units survive?)\n")

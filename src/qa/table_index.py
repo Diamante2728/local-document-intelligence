@@ -6,6 +6,7 @@ terrible retrieval keys ("1,234" matches nothing a user would type); the labels 
 what a question actually refers to.
 """
 import json
+import re
 from pathlib import Path
 
 import faiss
@@ -126,7 +127,7 @@ def _is_number(v):
         return False
 
 
-def list_numeric_cells(conn, doc_id, table_id, limit=40):
+def list_numeric_cells(conn, doc_id, table_id, limit=40, query=None):
     """Enumerate a table's numeric cells with the labels a human would use to find them.
 
     Returns list of {row, col, value, unit, header, row_label, section}.
@@ -161,6 +162,15 @@ def list_numeric_cells(conn, doc_id, table_id, limit=40):
         if len(cells) == 1 and text_cells:
             section_at[r] = row_labels[r]
 
+    # Merge consecutive banner rows: a section title that wrapped onto two lines
+    # ("Percent of Loans Charged-Off" / "(net, YTD)") otherwise registers as two sections,
+    # and the second — a bare qualifier — becomes the section label for the rows beneath it.
+    for r in sorted(section_at):
+        prev = r - 1
+        if prev in section_at:
+            section_at[r] = f"{section_at[prev]} {section_at[r]}".strip()
+            section_at.pop(prev, None)
+
     def section_for(r):
         prior = [k for k in section_at if k < r]
         return section_at[max(prior)] if prior else ""
@@ -177,9 +187,26 @@ def list_numeric_cells(conn, doc_id, table_id, limit=40):
             "row_label": row_labels.get(r, ""),
             "section": section_for(r),
         })
-        if len(out) >= limit:
-            break
-    return out
+
+    if len(out) <= limit:
+        return out
+
+    # Relevance-rank BEFORE truncating. Taking the first N cells in row order silently hides
+    # everything below the cap: on FDIC p13 the 40-cell cap stopped inside the first metric
+    # block, so the "Percent of Loans Noncurrent" cells were never shown and the planner could
+    # not have chosen the right answer however well it reasoned. It picked the closest visible
+    # cell (0.44) instead of 0.60 — a truncation artefact presenting as a reasoning failure.
+    if query:
+        q_terms = {t for t in re.findall(r"[a-z0-9]+", query.lower()) if len(t) > 2}
+        for cell in out:
+            context = f'{cell["row_label"]} {cell["header"]} {cell["section"]}'.lower()
+            c_terms = set(re.findall(r"[a-z0-9]+", context))
+            cell["_score"] = len(q_terms & c_terms)
+        ranked = sorted(out, key=lambda c: -c["_score"])[:limit]
+        for cell in ranked:
+            cell.pop("_score", None)
+        return sorted(ranked, key=lambda c: (c["row"], c["col"]))
+    return out[:limit]
 
 
 def build_table_previews(conn):

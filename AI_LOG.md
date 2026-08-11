@@ -235,11 +235,27 @@ wrong that the user corrected. Feeds the AI-disclosure section of `MEMO.md`.
      for the *section banner* that spans a block of rows. FDIC Table V-A stacks several metric
      blocks in one detected table, each repeating identical row labels, so "Construction and
      development" is ambiguous across metrics and the planner took the first match.
-  2. **An entire section was silently dropped by extraction.** "Percent of Loans Noncurrent"
-     exists in the page text (Construction and development = 0.60) but appears in **neither**
-     `p12_t0` nor `p13_t0`. Only three of the four sections survived. This is another instance of
-     the silent-partial-extraction class flagged earlier as undetected by the breakage log —
-     found here only because I chased a wrong answer back to source.
+  2. ~~**An entire section was silently dropped by extraction.**~~ **← THIS DIAGNOSIS WAS WRONG.
+     Corrected below.**
+
+#### Correction: my first diagnosis of defect (2) was wrong
+
+I originally concluded that the "Percent of Loans Noncurrent" section had been *dropped* by
+extraction, on the evidence that no cell in `p12_t0`/`p13_t0` contained the string "Noncurrent"
+and only three section banners were detectable. That inference was too quick — absence of the
+*banner* is not absence of the *data*.
+
+The user pushed back and named the real mechanism: **label loss, not data loss.** Checking the
+store row by row confirms it. The Noncurrent block's numbers were in `p12_t0` the entire time —
+`r17 col1 = 0.6`, exactly the value I had gone looking for — sitting in a **vacant-label row**
+(col0 empty, value present). The table alternates fully-labelled rows with vacant-label rows
+that are the second half of a visually two-line row whose label pdfplumber discarded, and the
+section banner row (`r15`) came back with zero populated cells.
+
+So the correct statement is: *the value was present and unreachable, not missing.* That is a
+meaningfully different defect with a different fix — recover the labels, rather than re-extract
+the data. Worth recording that the first read of the evidence was wrong, because the wrong
+diagnosis would have sent the fix in the wrong direction.
 - Partial fix applied: `list_numeric_cells` now detects section banners (a row whose only
   populated cell is a non-numeric label) and attaches `section` to every enumerated cell; the
   planner prompt now tells the model the same row label repeats across sections and that the
@@ -252,4 +268,75 @@ wrong that the user corrected. Feeds the AI-disclosure section of `MEMO.md`.
 - Consequence for the confidence formula: confidence 0.753 on a wrong answer shows the current
   formula measures *retrieval agreement and path auditability*, not correctness. It is not
   calibrated, and Phase 4's "what verifies the verifier" section should say so with this example
-  rather than claiming a calibration the numbers do not support.
+  rather than claiming a calibration the numbers do not support. **Parked durably in
+  `results/known_limitations.md` (L1)** so it reaches MEMO §4 rather than being lost between
+  phases.
+
+### The fix: label-loss repair pass + completeness detector
+
+- **Repair pass** (`src/ingest/tables.py`): for a lines-strategy table showing the vacant-label
+  symptom, rebuild it from `page.extract_words()` clustered by `top` (3pt tolerance) and bucketed
+  into columns using the page's own vertical rule x-positions — deliberately not via
+  `find_tables()` cell objects, since those are what lost the labels. Applied as a **repair, not
+  a replacement**: it only touches tables exhibiting the symptom, so fully-labelled tables cannot
+  regress.
+- **Completeness detector** (constraint #5): every row still holding values without a label is
+  written to `results/ingestion_check.md` as an `INCOMPLETE:` entry, and every successful repair
+  as `REPAIRED:`. This is the part that converts "found by chasing one wrong answer" into
+  something the pipeline reports on its own.
+- **Detector v1 over-fired badly and I caught it before trusting the numbers.** The first version
+  tested only col0 and ignored the header zone, so it reported **284 unlabelled rows on BEA GDP
+  alone** — nearly all false positives: BEA stacks multi-tier column headers (legitimately no row
+  label) and puts a line number in col0 with the actual label in **col1** ("43 | Net exports of
+  goods and services"). Tightened to skip the header zone and to accept a label in col0 *or*
+  col1. Same document then reported **10**. A breakage log that cries wolf is its own kind of
+  dishonesty — it buries the real entries — so precision mattered more than recall here.
+- **Narrow validation first** (FDIC p12-13, as scoped): vacant rows 26 → 1 on both pages; all
+  five Table V-A blocks now carry labels ("Percent of Loans 30-89 Days Past Due", "Percent of
+  Loans Noncurrent**", "Percent of Loans Charged-Off (net, YTD)", "Loans Outstanding (in
+  billions)", "Memo: Other Real Estate Owned"). "Construction and development" now resolves
+  distinctly to **0.38 / 0.60 / 0.04 / 498.5**. Residual vacant rows are page furniture
+  ("2024 VOLUME 18 NUMBER 2"), not data. Also merged consecutive banner rows, since a wrapped
+  title ("Percent of Loans Charged-Off" / "(net, YTD)") was registering as two sections.
+
+### Full-corpus re-run and re-audit (before → after)
+
+| metric | before | after |
+|---|---|---|
+| table cells | 118,836 | **119,077** (+241) |
+| tables | 939 | 939 (unchanged) |
+| prose chunks | 3,865 | 3,861 (census doc changed) |
+| breakage-log entries | 257 | **304** |
+| tables with vacant-label symptom | not measured | **38** |
+| ...repaired | — | **11** |
+| rows still unlabelled | **unknown/invisible** | **249, all itemised** |
+
+- **Re-audit of the "198 lines / 62 fallback" split: unchanged at 198 / 62.** The user expected
+  this likely undercounted the fragile bucket; it did not move, because the repair changes table
+  *content*, not retrieval *eligibility*. Reporting that plainly rather than manufacturing a
+  delta. What the re-audit *did* surface is a genuinely new fragility measure the old split could
+  not express: **36 of the 260 retrievable tables still carry unresolved label loss** (BEA GDP,
+  FT-900, EIA STEO among them) — that is the real fragile bucket, and it was invisible before.
+- The repair fires unevenly by publisher, which is expected and worth stating: FDIC 7/16 and Fed
+  MPR 2/2 repaired, but BEA 0/5 — BEA pages carry **no vertical rules at all**, so there is
+  nothing to bucket columns against. Those are logged as `INCOMPLETE: ... no vertical rules on
+  page to define columns` rather than silently skipped.
+
+### Third failure on the same question, and the fix that finally resolved it
+
+- After the repair, the same question returned **0.44** — still wrong, now sourced from p13. Root
+  cause was **not** reasoning: `list_numeric_cells` truncated to the first 40 cells *in row
+  order*, which stopped inside the first metric block, so the Noncurrent cells were **never shown
+  to the planner**. It could not have answered correctly however well it reasoned; it picked the
+  closest visible cell. A truncation artefact presenting as a reasoning failure.
+- Fixed by **relevance-ranking cells before truncating** (token overlap between the question and
+  each cell's row label + column header + section), then restoring row order for readability. All
+  five sections now fit inside the same 40-cell budget.
+- **Acceptance test passes:** the question now returns **0.6**, `operation=lookup`, cited to
+  `fdic_quarterly_banking_profile_2024q1 p13 p13_t0 r23c1`. Citation verified against the store —
+  that cell holds `0.6`, row label "Construction and development", section "Percent of Loans
+  Noncurrent**", header "FDIC-Insured All Insured Institutions". Correct answer, correct
+  provenance.
+- Worth noting the confidence went **down** (0.753 → 0.689) while the answer went from wrong to
+  right. That is not a paradox — it is direct evidence for L1: the score tracks retrieval
+  agreement, not correctness. It should not be read as a correctness signal in the memo.
