@@ -18,8 +18,13 @@ CORPUS_DIR = Path(__file__).resolve().parent / "corpus"
 # (i.e. not scanned/image-only, so no OCR dependency) before being added. See AI_LOG.md Phase 1.
 #
 # Reproducibility note: dated/archive URLs were preferred over rolling "current release" links
-# wherever both existed, so the corpus is a fixed snapshot. `census_housing_vacancies` is the one
-# exception — Census publishes it only at a rolling URL whose content changes quarterly.
+# wherever both existed, so the corpus is a fixed snapshot. `census_housing_vacancies` originally
+# used the rolling currenthvspress.pdf URL because no dated alternative was known at build time;
+# that URL now silently serves a different quarter (Q2 2026 as of 2026-08-11) than the Q1 2024
+# data the ingestion/gold-set work was built against — exactly the kind of silent drift this
+# project exists to catch. Census does publish a per-quarter archive at
+# census.gov/housing/hvs/files/qtr{Q}{YY}/, confirmed live (200, application/pdf,
+# last-modified 2024-07-30) on 2026-08-11; pinned to the Q1 2024 archive copy below.
 CORPUS = [
     {
         "doc_id": "fdic_quarterly_banking_profile_2024q1",
@@ -113,9 +118,9 @@ CORPUS = [
     },
     {
         "doc_id": "census_housing_vacancies",
-        "title": "Housing Vacancies and Homeownership (CPS/HVS), current quarterly release",
+        "title": "Housing Vacancies and Homeownership (CPS/HVS), Q1 2024",
         "org": "Census Bureau",
-        "url": "https://www.census.gov/housing/hvs/files/currenthvspress.pdf",
+        "url": "https://www.census.gov/housing/hvs/files/qtr124/Q124press.pdf",
     },
 ]
 
