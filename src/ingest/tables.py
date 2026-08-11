@@ -27,6 +27,18 @@ Never flattens a table into prose (constraint #4) — every cell keeps its own
 # Rejected alternative: camelot. It handles ruled tables well but needs Ghostscript, a system
 # dependency not present on this machine (no Homebrew) — and it does not solve the borderless
 # case above, which is the actual failure mode observed here.
+#
+# COST OF THIS FALLBACK (measured, not assumed — do not read the recovery numbers without it):
+# the text strategy infers column boundaries from whitespace gaps, and on tables whose columns
+# are narrowly spaced it sometimes places a boundary *inside* a number. Observed on
+# usda_wasde_2026_06 p12: "Area Planted ... 106.2" was split across two cells as "10" and
+# "6.2 *", and "95.4" as "9" and "5.4". Adjacent rows in the same table ("Beginning Stocks"
+# 47.9 / 42.3 / 57.2, "Production" 391.1 / 447.5 / 419.7) came through correctly.
+# So the fallback trades one failure mode (whole tables silently lost) for a different, noisier
+# one (some values split across columns). That is a net gain — a split value fails loudly at
+# compute time as a wrong-magnitude or non-numeric cell, whereas a lost table produced no signal
+# at all — but it is NOT clean recovery, and any cell used as gold-set ground truth must be
+# eyeballed against the source PDF rather than trusted because it is in the store.
 """
 import pdfplumber
 

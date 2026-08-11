@@ -118,3 +118,78 @@ wrong that the user corrected. Feeds the AI-disclosure section of `MEMO.md`.
 - Also added a full-rebuild wipe at the start of ingestion — table/chunk inserts are additive,
   so re-running without it would have silently doubled every cell (caught before it happened,
   not after).
+
+### What the fallback costs (found by inspecting recovered tables, not assumed)
+
+- After celebrating the recovery numbers I went and *looked* at what was recovered. The text
+  strategy infers column boundaries from whitespace, and on tightly-spaced tables it sometimes
+  puts a boundary **inside a number**: on WASDE p12, `Area Planted` 2026/27 = **106.2** was
+  stored as two cells `10` and `6.2`, and `95.4` as `9` and `5.4`. Adjacent rows in the same
+  table came through correctly (`Beginning Stocks` 47.9 / 42.3 / 57.2, `Production` 391.1 /
+  447.5 / 419.7 — all verified correct against the source).
+- Net assessment, recorded honestly rather than spun: the fallback trades *whole tables silently
+  lost* for *some values split across columns*. That is a real gain, because a split value fails
+  loudly at compute time while a lost table produced no signal at all — but it is **not clean
+  recovery**. Consequence for Phase 3: every gold-set cell must be eyeballed against the source
+  PDF, never trusted just because it is in the store.
+- Corpus measurement of the related problem: **16.2%** of non-empty cells (8,527) contain two or
+  more numbers merged into one cell (worst: OECD annex 3,007, Treasury MTS 1,091, BEA GDP 1,037).
+  These **fail safe** — `parse_cell` leaves them as text, so `compute.fetch_cell` raises
+  `ComputeError: cell is not numeric` rather than computing something wrong. 53.9% (28,416
+  cells) are clean single numbers, which is an ample base for a 20-question gold set.
+- Units: only **147 of 34,759** numeric cells carry a unit, because units almost always live in
+  the column header rather than the cell. This strongly confirms the gap documented in
+  `parse_cell.py` and makes a unit-error planted claim (Phase 3) very likely to expose a real
+  Phase 4 miss.
+
+### Phase 2 progress and two bugs found by running it
+
+- Built router (rules-first + LLM fallback), prose path, numeric plan→compute path, multi-doc
+  path, `answer()` interface, and the `python -m src.qa.ask` CLI.
+- **Bug 1 (caught by the guard, then designed out):** asked for raw `doc_id`/`table_id` strings,
+  the 7B model returned the doc_id in the table_id field. The allow-list guard correctly refused
+  to compute over an invented table — the right behaviour, but a useless answer. Changed the
+  prompt to label candidates `TABLE 1..N` and have the model return an integer, which removes
+  the entire id-transcription failure class. The guard is retained.
+- **Bug 2 (found by reading the failing output, not by assuming):** the next run picked a cell
+  that did not exist (`r1c2` in a 2-column table). Cause: cell values can contain embedded
+  newlines, so a single logical row rendered as ~20 physical lines and destroyed the r/c grid
+  the model counts against. Fixed by collapsing whitespace and capping cell width in
+  `render_table_grid`.
+- Latency note for Phase 5 planning: top_k=5 candidate tables put a numeric question at ~50s on
+  this M1; top_k=3 brought it to ~26s. Recorded as a `# DECISION` in `answer.py` since it
+  directly affects whether the 20-question x 3-rung ladder is feasible.
+- **Corpus reproducibility issue confirmed in practice:** the `census_housing_vacancies` rolling
+  URL (the one exception flagged at download time) now serves **Q2 2026** data, not the 2024 data
+  a fixed corpus would want. This is the predicted link-rot behaviour actually occurring, not a
+  hypothetical — it needs a decision from the user (pin a dated Census archive URL, or drop the
+  document) before the gold set is written against it.
+
+### Bug 3 — retrieval was serving junk tables (found by following a failure, not by guessing)
+
+- A corn-production question failed with `cell not found ... p35_t1 r1c1`. Rather than treat that
+  as the planner being dumb, I checked the table it had been given: a **2-cell** "table" whose
+  single populated cell held an entire newline-crammed column of numbers. The planner had no
+  valid coordinate to pick. The real WASDE table existed but lost the retrieval ranking to junk.
+- Measured the scale of the problem across the store: of **939** detected tables, **63.7% contain
+  zero cleanly-numeric cells** and 44.7% have <6 non-empty cells; only **260 (27.7%)** are real
+  numeric tables. pdfplumber's detector fires on page furniture, figure captions and cover-page
+  layout blocks, all of which were sitting in the retrieval index competing with real data.
+- Fix: a quality gate on the **retrieval index only** (>=6 non-empty cells AND >=4 clean numeric
+  cells), documented as a `# DECISION` in `src/qa/table_index.py`. Index went 939 -> 260 tables,
+  and all 16 documents remain represented. Deliberately **not** filtered at ingestion time: the
+  raw store must stay a faithful record of what pdfplumber produced, or the breakage honesty
+  required by constraint #5 becomes a fiction.
+
+### Bug 4 — sparse grids led the planner onto blank cells
+
+- Next failure: `cell is blank: usda_wasde_2026_06/p9_ft0 r15c4`. Correct document, correct
+  table, blank coordinate. Cause: text-strategy fallback tables carry wide empty spacer columns,
+  so the rendered grid was mostly whitespace and the planner mis-targeted.
+- Fix: `render_table_grid` now drops entirely-blank rows/columns **from the rendered view while
+  preserving each surviving row/col's true index in its label**, so plans stay directly
+  checkable against the store. Same WASDE table now renders as a dense, legible grid.
+- Pattern worth noting across bugs 1-4: every one of these was surfaced by the system **refusing
+  to answer** rather than by producing a wrong number. The constraint-#2 design (model plans,
+  Python computes, refuse on any mismatch) turned four separate silent-corruption paths into
+  four loud, diagnosable failures.

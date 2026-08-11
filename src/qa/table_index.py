@@ -15,6 +15,29 @@ from ..ingest.embed import get_model
 TABLE_INDEX_DIR = Path(__file__).resolve().parents[2] / "index"
 MAX_PREVIEW_ROWS = 12
 MAX_PREVIEW_COLS = 8
+MAX_CELL_CHARS = 40  # keeps a rendered grid row on one line; see render_table_grid
+
+# DECISION: which tables are eligible for numeric retrieval
+# Only tables with >= MIN_TABLE_CELLS non-empty cells AND >= MIN_TABLE_NUMERICS cleanly-parsed
+# numeric cells are put in the retrieval index.
+#
+# Why: pdfplumber's detector fires on any ruled or whitespace-aligned region, so the raw store
+# holds a lot of things that are not data tables — page furniture, figure captions, cover-page
+# layout blocks. Measured on this corpus: of 939 detected tables, **63.7% contain zero cleanly
+# numeric cells** and 44.7% have fewer than 6 non-empty cells; only **27.7% (260 tables)** clear
+# both bars. Leaving the other 72% in the retrieval index actively causes wrong answers — an
+# observed failure had the planner pick a 2-cell junk table (one cell holding a whole
+# newline-crammed column) for a corn-production question, then reference a column that did not
+# exist, because that junk table out-scored the real WASDE table.
+#
+# Rejected alternative: index everything and let the planner sort it out. That is what produced
+# the failure above — a 7B model shown a nonsense grid guesses coordinates rather than declining.
+# Rejected alternative: filter at ingestion (don't store junk tables at all). Rejected because
+# the ingestion store should stay a faithful record of what pdfplumber actually produced —
+# breakage honesty (constraint #5) depends on not quietly deleting the evidence. Filtering at
+# *retrieval* keeps the raw record intact while keeping junk out of the answer path.
+MIN_TABLE_CELLS = 6
+MIN_TABLE_NUMERICS = 4
 
 
 def render_table_grid(conn, doc_id, table_id, max_rows=None, max_cols=None,
@@ -44,22 +67,61 @@ def render_table_grid(conn, doc_id, table_id, max_rows=None, max_cols=None,
         if r > max_r or c > max_c:
             continue
         cell = "" if value is None else str(value)
+        # Cells can contain embedded newlines (wrapped text, or a whole cover-page block that
+        # pdfplumber called a "table"). Left raw, they break the one-row-per-line layout the
+        # model counts r/c indices against — it then references a column that does not exist.
+        # Collapse to a single line and cap length so the grid stays a real grid.
+        cell = " ".join(cell.split())
+        if len(cell) > MAX_CELL_CHARS:
+            cell = cell[:MAX_CELL_CHARS - 1] + "…"
         if unit and not value_only:
             cell = f"{cell}{unit}" if unit == "%" else f"{cell} {unit}"
         grid[r][c] = cell
 
+    # Drop entirely-blank rows and columns from the RENDERED view while keeping each surviving
+    # row/col's TRUE index in its label. The text-strategy fallback produces very sparse grids
+    # (whole empty spacer columns between data columns); shown raw, the planner kept selecting
+    # blank coordinates — an observed failure ("cell is blank: .../p9_ft0 r15c4"). Hiding empty
+    # lanes while preserving real indices keeps every plan directly checkable against the store.
+    keep_rows = [r for r in range(max_r + 1) if any(grid[r][c] for c in range(max_c + 1))]
+    keep_cols = [c for c in range(max_c + 1) if any(grid[r][c] for r in keep_rows)]
+    if not keep_rows or not keep_cols:
+        return ""
+
     lines = []
     if with_indices:
-        lines.append("       " + " | ".join(f"c{c}" for c in range(max_c + 1)))
-    for r_idx, row in enumerate(grid):
-        prefix = f"r{r_idx:<4} " if with_indices else ""
-        lines.append(prefix + " | ".join(row))
+        lines.append("        " + " | ".join(f"c{c}" for c in keep_cols))
+    for r in keep_rows:
+        prefix = f"r{r:<4}  " if with_indices else ""
+        lines.append(prefix + " | ".join(grid[r][c] for c in keep_cols))
     return "\n".join(lines)
 
 
+def is_retrievable_table(conn, doc_id, table_id):
+    """Quality gate for the retrieval index — see the DECISION note at the top of this module."""
+    values = conn.execute(
+        "SELECT value FROM tables WHERE doc_id = ? AND table_id = ? "
+        "AND value IS NOT NULL AND value != ''",
+        (doc_id, table_id),
+    ).fetchall()
+    if len(values) < MIN_TABLE_CELLS:
+        return False
+    numerics = 0
+    for (v,) in values:
+        try:
+            float(str(v).strip())
+        except ValueError:
+            continue
+        numerics += 1
+        if numerics >= MIN_TABLE_NUMERICS:
+            return True
+    return False
+
+
 def build_table_previews(conn):
-    """One preview string per table: doc title + header row + row labels."""
+    """One preview string per RETRIEVABLE table: doc title + header row + row labels."""
     previews = []
+    skipped = 0
     tables = conn.execute(
         "SELECT DISTINCT doc_id, table_id, page FROM tables ORDER BY doc_id, page, table_id"
     ).fetchall()
@@ -67,6 +129,9 @@ def build_table_previews(conn):
     titles = dict(conn.execute("SELECT doc_id, title FROM documents").fetchall())
 
     for doc_id, table_id, page in tables:
+        if not is_retrievable_table(conn, doc_id, table_id):
+            skipped += 1
+            continue
         headers = conn.execute(
             "SELECT DISTINCT header FROM tables WHERE doc_id = ? AND table_id = ? "
             "AND header IS NOT NULL AND header != ''",
@@ -86,6 +151,8 @@ def build_table_previews(conn):
         previews.append({
             "doc_id": doc_id, "table_id": table_id, "page": page, "preview": preview,
         })
+    print(f"  table retrieval index: kept {len(previews)}, "
+          f"skipped {skipped} as non-numeric/too-small")
     return previews
 
 
