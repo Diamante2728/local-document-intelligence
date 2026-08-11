@@ -1,0 +1,12 @@
+*.safetensors
+*.gguf
+mlx_model/
+m-fp16/
+m-int8/
+m-int4/
+.venv/
+__pycache__/
+corpus/*.pdf
+answer_key.json      # NEVER commit plaintext key
+*.faiss
+index/

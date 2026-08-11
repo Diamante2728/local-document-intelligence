@@ -1,0 +1,7 @@
+mlx-lm==0.31.3
+sentence-transformers==5.7.0
+faiss-cpu==1.15.0
+pdfplumber==0.11.10
+pymupdf==1.28.2
+pandas==3.0.5
+cryptography==50.0.0
