@@ -38,6 +38,44 @@ wrong that the user corrected. Feeds the AI-disclosure section of `MEMO.md`.
 - **Foundation check passed:** model loads and generates offline within budget (peak MLX memory
   4.41GB, well under the ~4-5GB usable budget on this 8GB machine). Proceeding to Phase 1.
 
+## Phase 4 — Verification layer (1C)
+
+- Built `src/verify/verify.py` (claim → verdict + citation + confidence) and
+  `src/verify/score.py` (precision/recall + 3-way confusion matrix → `results/verification_report.md`).
+- `supported` / `contradicted` / `unverifiable` are separated **structurally**: the code decides
+  first whether any evidence was found at all, and only then whether that evidence agrees.
+  Collapsing "I found nothing" into "this is false" is the tempting shortcut here, and it would
+  let a verifier score well against planted errors while actually measuring its own retrieval
+  failures.
+- **First run was bad and the numbers said so: precision 0.300, recall 0.500, exact-match 0.400.**
+  It returned `contradicted` for 10 of 15 claims, 7 of them wrongly. I did not ship that as an
+  "honest limitation" — a verifier that contradicts almost everything is broken, not modest.
+- Diagnosis by reading the per-claim basis strings rather than the headline metric:
+  1. **The claimed number was taken as the first number in the sentence.** Claim 12 ("official
+     poverty rate in 2022 was 11.5 percent") was compared against **2022**, the year.
+  2. **Cell matching was far too loose** (2 overlapping terms, whole-word only). Claim 8's "net
+     charge-off rate for credit card loans" matched the *30-89-day* credit-card cell (1.55)
+     instead of the charged-off cell (4.7), because "charge-off" and "Charged-Off" share no
+     whole-word token.
+  Together these manufactured contradictions out of the verifier's own matching failures — a
+  failure mode that is **invisible in recall** and shows up only in precision, which is exactly
+  why the positive class and both metrics have to be reported.
+- Fix: a numeric recompute may now decide a verdict only when the match is **strong and
+  unambiguous** — ≥3 distinctive non-stopword terms overlapping with prefix tolerance
+  (so charge/charged agree), the winning cell must beat the best cell from any *other* row by a
+  margin, bare 4-digit years are excluded as period markers rather than measurements, and the
+  cell is compared against **all** numbers in the claim rather than the first. If any condition
+  fails the code returns nothing and falls through to text-based verification instead of guessing.
+- Verified in isolation before spending another full LLM run: claim 6 now matches 0.6 vs claimed
+  0.85 (correct contradiction), claim 8 matches 4.7 vs 4.7 (correct support), and claims
+  1/2/4/5/9/10/12/15 fall through to the text path instead of manufacturing contradictions.
+- **A first-run "success" that was actually luck, now removed.** Claim 10 (the planted unit
+  error) was scored `contradicted` in run 1 — but the basis string reads "recomputed 0.0 does not
+  match claimed 498.5", i.e. it matched an unrelated cell and got the right verdict for entirely
+  the wrong reason. After the fix it no longer matches any cell confidently, which should expose
+  the genuine unit-error miss predicted in the answer key. Worth recording that the first run's
+  score flattered the system on this claim.
+
 ## Phase 1 — Ingestion (in progress)
 
 - Wrote SQLite schema (`src/ingest/db.py`) exactly matching the spec's `tables(doc_id, page,
