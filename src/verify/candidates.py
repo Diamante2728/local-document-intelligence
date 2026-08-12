@@ -16,9 +16,13 @@ ground truth — the filters remove known-bad cells, they do not prove a cell is
 Usage: python -m src.verify.candidates [doc_id]
 """
 import json
+import re
 import sqlite3
 import sys
 from pathlib import Path
+
+CANONICAL_NUMBER = re.compile(r"-?\d+(?:\.\d+)?")
+YEARLIKE = re.compile(r"(?:19|20)\d{2}")
 
 from ..ingest.db import DB_PATH
 from ..qa.table_index import list_numeric_cells
@@ -62,6 +66,15 @@ def candidate_cells(conn, doc_id=None, lines_only=True, min_label_len=4, limit_p
             if len(cell["row_label"]) < min_label_len:
                 continue
             if not cell["header"] and not cell["section"]:
+                continue
+            # Defence in depth against split fragments the detector has not learned yet.
+            # A canonical value round-trips; "18." (Census p15, a 18.4 cut after the decimal)
+            # does not. Cheap, and independent of whether verify_cells flagged the cell.
+            if not CANONICAL_NUMBER.fullmatch(cell["value"]):
+                continue
+            # A bare 4-digit year is almost always a column header that leaked into the data
+            # region, not an answer worth asking about.
+            if YEARLIKE.fullmatch(cell["value"]) and not cell["unit"]:
                 continue
             out.append({
                 "doc_id": d, "table_id": t, "page": page,

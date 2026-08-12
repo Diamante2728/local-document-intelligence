@@ -25,6 +25,7 @@ import pdfplumber
 
 NUMERIC_PREFIX = re.compile(r"-?\$?\(?-?[\d,]*\.?\d+\)?%?")
 NUMERIC_FULL = re.compile(r"-?\$?\(?-?[\d,]*\.?\d+\)?%?")  # used with fullmatch()
+TRUNCATED_DECIMAL = re.compile(r"-?\$?[\d,]+\.")           # "18." / "9." / "1,234." only
 
 SUSPECT_SCHEMA = """
 CREATE TABLE IF NOT EXISTS suspect_cells (
@@ -143,6 +144,14 @@ def find_suspect_cells(conn, pdf_path, doc_id):
                     # against its own artefact. Both sides of the comparison shared the defect.
                     # Restricting to this signature took the corpus from 294 flags (nearly all
                     # spurious) to 30.
+                    #
+                    # MIRROR SIGNATURE (added after it leaked into gold-set candidates): the cut
+                    # can also land just after the decimal point, leaving a first fragment that
+                    # ends in "." — Census poverty p15 stores 18.4 as `18.` | `4 Asian 3` and
+                    # 9.8 as `9.` | `8 Non-Hispanic White`. A value ending in "." is malformed on
+                    # its face, so this arm needs no page-token corroboration to be trustworthy;
+                    # requiring it anyway would miss cases where the joined value never appears
+                    # as a clean token because the fragment carries trailing label text.
                     if "." not in d2 or "." in d1:
                         continue
                     joined = normalise_number(d1 + d2)
@@ -153,6 +162,44 @@ def find_suspect_cells(conn, pdf_path, doc_id):
                                 (doc_id, page_num, table_id, r, col, "split-number", detail)
                             )
                             split_flagged.add((table_id, r, col))
+
+            # MIRROR SIGNATURE, handled per-cell rather than per-pair. The cut can land just
+            # after the decimal point, leaving a fragment that ends in "." — Census poverty p15
+            # holds 18.4 as `18.` | `Asian 3` and 9.8 as `9.` | `8 Non-Hispanic White`.
+            # Pair logic cannot catch these: the partner fragment often starts with label text
+            # ("Asian 3") so it yields no digits at all, and `_digits` strips the trailing dot so
+            # the first fragment stops looking malformed. Checking the raw stored value directly
+            # sidesteps both problems — a value ending in "." is malformed on its face and needs
+            # no page-token corroboration.
+            for (table_id, r), cells in grouped.items():
+                next_cell = {c: v for c, v in cells}
+                for c, value in cells:
+                    text = str(value).strip()
+                    # Must be a bare number with a dangling decimal point and nothing else.
+                    # A looser "ends with a dot" test fired 436 times corpus-wide, almost all
+                    # of it prose ending in a full stop ("...refer to the BEA website.") and
+                    # dot-leader runs ("42.7 49.7 45.0 ..............") — neither is a truncated
+                    # value. Anchoring the whole cell brings it back to the real cases.
+                    if not TRUNCATED_DECIMAL.fullmatch(text):
+                        continue
+                    # ...and the fragment that follows must actually begin with digits. Without
+                    # this, ordered-list numbering matches perfectly: the OECD annex contents
+                    # page stores "1." | "Demand and output for..." row after row, which is a
+                    # list marker, not a cut number. 30 of the 124 flags were exactly that.
+                    tail = str(next_cell.get(c + 1, "")).strip()
+                    if not tail[:1].isdigit():
+                        continue
+                    if (table_id, r, c) in split_flagged:
+                        continue
+                    detail = (
+                        f"{text!r} ends in a decimal point and the next cell {tail[:12]!r} "
+                        f"begins with digits — value cut just after the decimal point"
+                    )
+                    for col in (c, c + 1):
+                        suspects.append(
+                            (doc_id, page_num, table_id, r, col, "split-number", detail)
+                        )
+                        split_flagged.add((table_id, r, col))
 
             for (table_id, r), cells in grouped.items():
                 for c, value in cells:
