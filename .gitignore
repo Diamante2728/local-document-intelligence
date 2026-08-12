@@ -7,7 +7,14 @@ m-int4/
 .venv/
 __pycache__/
 corpus/*.pdf
-answer_key.json      # NEVER commit plaintext key
-.answer_key_secret   # Fernet key material — without this the .enc blob is useless
+# NEVER commit the plaintext key or the Fernet secret.
+# NOTE: .gitignore has no trailing-comment syntax — a line like
+#   answer_key.json      # NEVER commit plaintext key
+# is read as a pattern containing the spaces and the '#', so it matches nothing
+# and the file stays committable. Comments must be on their own line.
+# (The build spec's .gitignore snippet has exactly that bug; `git check-ignore -v`
+# confirmed both files were unignored before this fix.)
+answer_key.json
+.answer_key_secret
 *.faiss
 index/
