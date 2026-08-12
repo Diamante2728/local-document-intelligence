@@ -24,6 +24,18 @@ def parse_cell(raw):
     working = text
     unit = None
 
+    # Statistical tables append footnote/status markers to values ("106.2 *", "45.1 **",
+    # "1,234 r" for revised, "56.7 p" for preliminary). Left attached, the cell fails the
+    # numeric test and is stored as TEXT, so a perfectly good value becomes uncomputable —
+    # WASDE p12 held the correct `106.2 *` right next to the split fragments `10` / `6.2 *`,
+    # and none of the three was usable. Markers are stripped only from the END and only when
+    # what remains still parses as a number, so a genuinely textual cell is untouched.
+    marker = re.search(r"[\s]*(?:\*+|\*\*+|(?<=\d)\s+[a-z]{1,2})$", working)
+    if marker and marker.start() > 0:
+        candidate = working[:marker.start()].strip()
+        if re.fullmatch(r"[+-]?[\d,]*\.?\d+%?\)?", candidate.lstrip("($€£¥")):
+            working = candidate
+
     if working.endswith("%"):
         unit = "%"
         working = working[:-1].strip()

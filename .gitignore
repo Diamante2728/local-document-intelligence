@@ -8,5 +8,6 @@ m-int4/
 __pycache__/
 corpus/*.pdf
 answer_key.json      # NEVER commit plaintext key
+.answer_key_secret   # Fernet key material — without this the .enc blob is useless
 *.faiss
 index/

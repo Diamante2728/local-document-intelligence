@@ -6,7 +6,7 @@
 
 | doc_id | pages | tables | table cells | via text-fallback (tables/cells) | label-repair (repaired/symptomatic) | rows still unlabelled | prose chunks | breakage log entries |
 |---|---|---|---|---|---|---|---|---|
-| bea_gdp_2024q1_second_estimate | 20 | 17 | 9379 | 0 / 0 | 0 / 5 | 10 | 125 | 6 |
+| bea_gdp_2024q1_second_estimate | 20 | 17 | 9379 | 0 / 0 | 0 / 9 | 18 | 125 | 10 |
 | bea_international_transactions_2024q1 | 24 | 19 | 10261 | 0 / 0 | 0 / 1 | 8 | 158 | 1 |
 | bea_personal_income_outlays_2024_04 | 10 | 10 | 2591 | 1 / 420 | 0 / 0 | 0 | 45 | 1 |
 | census_ft900_trade_2024_03 | 63 | 68 | 2266 | 0 / 0 | 0 / 5 | 17 | 373 | 5 |
@@ -23,9 +23,9 @@
 | usda_wasde_2026_06 | 40 | 32 | 20353 | 28 / 20024 | 0 / 0 | 0 | 175 | 29 |
 | worldbank_commodity_markets_2025_04 | 68 | 21 | 2402 | 3 / 1600 | 0 / 0 | 0 | 382 | 49 |
 
-**Corpus totals:** 16 documents, 713 pages, 939 tables, 119077 table cells (62 tables / 44099 cells recovered by text-strategy fallback), 3861 prose chunks, 304 breakage-log entries.
+**Corpus totals:** 16 documents, 713 pages, 939 tables, 119077 table cells (62 tables / 44099 cells recovered by text-strategy fallback), 3861 prose chunks, 308 breakage-log entries.
 
-**Label-loss repair:** 38 tables showed the vacant-label symptom (values present, row label dropped); 11 were rebuilt from page words + vertical rules. **249 rows still hold values with no label** — those values are in the store but cannot be addressed by label, and every one is itemised in the breakage log below as `INCOMPLETE:`.
+**Label-loss repair:** 42 tables showed the vacant-label symptom (values present, row label dropped); 11 were rebuilt from page words + vertical rules. **257 rows still hold values with no label** — those values are in the store but cannot be addressed by label, and every one is itemised in the breakage log below as `INCOMPLETE:`.
 
 
 ## Sample tables (eyeball check: did numbers/units survive?)
@@ -36,9 +36,9 @@
 
 |  |  | Billions of dollars |  |  |  |  |  | Billions of chained (2017) dollars |  |  |  |  |  |  |  |  |  |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-|  |  | 2023 r | Seasonally adjusted at annual rates |  |  |  |  | 2023 r | Seasonally adjusted at annual rates |  |  |  |  | Change from preceding
+|  |  | 2023 | Seasonally adjusted at annual rates |  |  |  |  | 2023 | Seasonally adjusted at annual rates |  |  |  |  | Change from preceding
 period |  |  |  |
-|  |  |  | 2023 |  |  |  | 2024 |  | 2023 |  |  |  | 2024 | 2023 r | 2023 | 2024 |  |
+|  |  |  | 2023 |  |  |  | 2024 |  | 2023 |  |  |  | 2024 | 2023 | 2023 | 2024 |  |
 |  |  |  | Q1 | Q2 | Q3 | Q4 r | Q1 r |  | Q1 | Q2 | Q3 | Q4 r | Q1 r |  | Q4 r | Q1 r |  |
 | 43 | Net exports of goods and services | -798.7 | -825.7 -806.1 -779.2 -783.7 -850.1 |  |  |  |  | -928.1 | -935.1 -928.2 -930.7 -918.5 -975.3 |  |  |  |  | 122.9 | 12.1 | -56.8 | 43 |
 |  | Exports | 3027.2 | 3,064.8 2,961.8 3,030.8 3,051.7 3,080.9 |  |  |  |  | 2503.9 | 2,525.4 2,464.7 2,497.3 2,528.2 2,535.6 |  |  |  |  | 64.3 | 31.0 7.3 |  |  |
@@ -62,7 +62,7 @@ period |  |  |  |
 |  |  | Percent change from preceding year |  |  |  |  |  |  |  | Percent change from fourth quarter to
 fourth quarter one year ago |  |  |  |  |  |  |  |  |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-|  |  | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 r | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 r |  |
+|  |  | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 |  |
 | 1 | Gross domestic product (GDP) | 1.8 2.5 3.0 2.5 -2.2 5.8 1.9 2.5 |  |  |  |  |  |  |  | 2.2 3.0 2.1 3.2 -1.1 5.4 0.7 3.1 |  |  |  |  |  |  |  | 1 |
 |  | Personal consumption expenditures (PCE) | 2.5 2.6 2.7 2.0 -2.5 8.4 2.5 2.2 |  |  |  |  |  |  |  | 2.5 3.1 2.0 2.6 -0.8 7.2 1.2 2.7 |  |  |  |  |  |  |  |  |
 | 3 | Goods | 3.6 4.1 4.0 3.0 4.9 11.3 0.3 2.0 |  |  |  |  |  |  |  | 3.7 5.4 2.1 3.8 8.8 6.6 -0.6 3.3 |  |  |  |  |  |  |  | 3 |
@@ -84,7 +84,7 @@ fourth quarter one year ago |  |  |  |  |  |  |  |  |
 
 (page 14)
 
-|  |  | 2021 | 2022 | 2023 r | Seasonally adjusted at annual rates |  |  |  |  |  |
+|  |  | 2021 | 2022 | 2023 | Seasonally adjusted at annual rates |  |  |  |  |  |
 |---|---|---|---|---|---|---|---|---|---|---|
 |  |  |  |  |  | 2023 |  |  |  | 2024 |  |
 |  |  |  |  |  | Q1 | Q2 | Q3 | Q4 r | Q1 r |  |
@@ -96,7 +96,7 @@ fourth quarter one year ago |  |  |  |  |  |  |  |  |
 
 (page 15)
 
-|  |  | 2021 | 2022 | 2023 r | Seasonally adjusted at annual rates |  |  |  |  |  |
+|  |  | 2021 | 2022 | 2023 | Seasonally adjusted at annual rates |  |  |  |  |  |
 |---|---|---|---|---|---|---|---|---|---|---|
 |  |  |  |  |  | 2023 |  |  |  | 2024 |  |
 |  |  |  |  |  | Q1 | Q2 | Q3 | Q4 r | Q1 r |  |
@@ -147,10 +147,14 @@ Entries prefixed `RECOVERED:` are not failures — they record where the text-st
 | doc_id | page | table_id | reason |
 |---|---|---|---|
 | bea_gdp_2024q1_second_estimate | 1 | p1_t0 | extract_tables() returned an empty/all-blank table (lines strategy; usually a chart's axes/gridlines detected as a table) |
+| bea_gdp_2024q1_second_estimate | 7 | p7_t0 | INCOMPLETE: 2 row(s) hold values with no row label (rows [0, 1]) and repair did not resolve them (no vertical rules on page to define columns) — those values are in the store but not addressable by label |
 | bea_gdp_2024q1_second_estimate | 8 | p8_t0 | INCOMPLETE: 2 row(s) hold values with no row label (rows [0, 1]) and repair did not resolve them (no vertical rules on page to define columns) — those values are in the store but not addressable by label |
 | bea_gdp_2024q1_second_estimate | 11 | p11_t0 | INCOMPLETE: 2 row(s) hold values with no row label (rows [0, 1]) and repair did not resolve them (no vertical rules on page to define columns) — those values are in the store but not addressable by label |
+| bea_gdp_2024q1_second_estimate | 14 | p14_t0 | INCOMPLETE: 2 row(s) hold values with no row label (rows [0, 1]) and repair did not resolve them (no vertical rules on page to define columns) — those values are in the store but not addressable by label |
+| bea_gdp_2024q1_second_estimate | 15 | p15_t0 | INCOMPLETE: 2 row(s) hold values with no row label (rows [0, 1]) and repair did not resolve them (no vertical rules on page to define columns) — those values are in the store but not addressable by label |
 | bea_gdp_2024q1_second_estimate | 16 | p16_t0 | INCOMPLETE: 2 row(s) hold values with no row label (rows [1, 2]) and repair did not resolve them (no vertical rules on page to define columns) — those values are in the store but not addressable by label |
 | bea_gdp_2024q1_second_estimate | 17 | p17_t0 | INCOMPLETE: 2 row(s) hold values with no row label (rows [1, 2]) and repair did not resolve them (no vertical rules on page to define columns) — those values are in the store but not addressable by label |
+| bea_gdp_2024q1_second_estimate | 18 | p18_t0 | INCOMPLETE: 2 row(s) hold values with no row label (rows [0, 1]) and repair did not resolve them (no vertical rules on page to define columns) — those values are in the store but not addressable by label |
 | bea_gdp_2024q1_second_estimate | 19 | p19_t0 | INCOMPLETE: 2 row(s) hold values with no row label (rows [0, 1]) and repair did not resolve them (no vertical rules on page to define columns) — those values are in the store but not addressable by label |
 | bea_international_transactions_2024q1 | 24 | p24_t0 | INCOMPLETE: 8 row(s) hold values with no row label (rows [5, 7, 12, 17, 21, 25, 29, 33]) and repair did not resolve them (no vertical rules on page to define columns) — those values are in the store but not addressable by label |
 | bea_personal_income_outlays_2024_04 | 1 | None | RECOVERED: lines strategy found no usable table; text-strategy fallback recovered 1 table(s) — borderless/dot-leader layout |

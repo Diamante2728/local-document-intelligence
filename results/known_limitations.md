@@ -64,17 +64,50 @@ PDF first.
 
 ---
 
-## L3 — Text-strategy fallback can split a number across columns
+## L3 — Text-strategy fallback can split a number across columns — NOW DETECTED
 
 The fallback that recovers borderless tables infers column boundaries from whitespace and
 sometimes places a boundary *inside* a number: WASDE p12 `Area Planted` 2026/27 = **106.2** was
 stored as two cells `10` and `6.2`; `95.4` became `9` and `5.4`. Adjacent rows in the same table
 came through correctly.
 
-**Consequence:** any cell used as gold-set ground truth must be eyeballed against the source PDF
-rather than trusted because it is in the store. Unlike L2, this defect has **no detector yet** —
-it is a candidate for extending the same verify-store-against-source-text mechanism that L2's
-completeness detector uses.
+**Detector** (`src/ingest/verify_cells.py`) — the same verify-store-against-source mechanism as
+L2, aimed at this signature. Two signals:
+
+- **split-number** (high precision, *suppressed from the answer path*): two horizontally adjacent
+  cells whose digits concatenate into a number that appears on the source page, where the first
+  cell's own value does not, **and** the decimal point falls in the second fragment and not the
+  first — the observed cut-inside-the-integer-part signature. Corpus-wide: **8 split pairs
+  (16 cells)** across WASDE (5) and the Census poverty report (3). Every one verified by eye.
+- **orphan-number** (broad, noisy, *recorded only*): a purely numeric cell whose value appears
+  nowhere on its source page as a standalone token. Too noisy to hide data on, so it is a
+  diagnostic count, not a suppression rule.
+
+**Two false-positive traps found and closed while building it** — both would have made the
+detector actively misleading:
+
+1. `float()` normalisation lost precision above 2^53, so concatenating two 9-digit FDIC cells
+   produced an 18-digit value that rounded and collided with an unrelated page token. Every
+   "split" flagged on FDIC — a lines-strategy document that cannot exhibit fallback splits —
+   came from this. Fixed with exact string canonicalisation.
+2. Without the decimal-position signature, short integers concatenate into other real page
+   numbers by coincidence (`'93'+'5'` → `935`), **and** `extract_text()` merges adjacent wide
+   columns the same way the table extractor does — so the check was validating an artefact
+   against its own artefact. Adding the signature took the corpus from 294 flags (nearly all
+   spurious) to 16.
+
+**Suppression, not deletion:** flagged cells stay in `tables` (the raw store remains a faithful
+record) but are withheld from `list_numeric_cells`, so the planner cannot compute on `10` when
+the page says `106.2`.
+
+**Related fix:** footnote/status markers (`106.2 *`, `1,234 r`, `56.7 p`) previously made a cell
+fail the numeric test and be stored as text — so on WASDE p12 the *correct* value `106.2 *` sat
+unusable beside the split fragments. `parse_cell` now strips trailing markers when the remainder
+still parses as a number, recovering those values.
+
+**Residual:** the detector only claims the signature it was built for. It does not detect splits
+where the decimal lands in the first fragment, nor splits of pure integers. Gold-set cells drawn
+from fallback tables still warrant an eyeball against source.
 
 ---
 

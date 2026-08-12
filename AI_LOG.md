@@ -340,3 +340,37 @@ diagnosis would have sent the fix in the wrong direction.
 - Worth noting the confidence went **down** (0.753 → 0.689) while the answer went from wrong to
   right. That is not a paradox — it is direct evidence for L1: the score tracks retrieval
   agreement, not correctness. It should not be read as a correctness signal in the memo.
+
+### L3 — extending the same verify-against-source mechanism to number splits
+
+- Built `src/ingest/verify_cells.py`: the same "check the store against the source page text"
+  idea as the L2 completeness detector, pointed at a different signature — the text-fallback
+  cutting a column boundary through the middle of a number.
+- **Two false-positive traps, both caught before trusting the output.** They matter more than the
+  final counts, because either would have made the detector confidently misleading:
+  1. **Float precision.** Normalising with `float()` silently rounds above 2^53, so concatenating
+     two 9-digit FDIC cells gave an 18-digit value that rounded into a match with an unrelated
+     page token. *Every* split flagged on FDIC came from this — on a lines-strategy document that
+     structurally cannot have fallback splits, which is what made it obvious something was wrong.
+     Replaced with exact string canonicalisation (unit-tested, including the 18-digit case).
+  2. **Validating an artefact against its own artefact.** Short integers concatenate into other
+     real page numbers by coincidence (`'93'+'5'` → `935`), and — worse — `extract_text()` merges
+     adjacent wide columns exactly the way the table extractor does, so the "source of truth" I
+     was checking against carried the same defect. Fixed by requiring the observed signature: the
+     decimal point lands in the second fragment and not the first (`106.2` cut into `10` | `6.2`).
+     Corpus flags went from **294 (nearly all spurious) to 14**, all eyeball-verified.
+- **Suppression, not deletion.** Flagged fragments are withheld from `list_numeric_cells` so the
+  planner cannot compute on `10` when the page says `106.2`, but they stay in `tables` — same
+  principle as the junk-table retrieval gate: the raw store stays a faithful record of what
+  extraction produced, or constraint #5's honesty becomes a fiction.
+- The broader `orphan-number` signal (391 cells: purely-numeric cells whose value appears nowhere
+  on their source page) is **recorded but not used to hide data** — it is too noisy to justify
+  suppressing on, and saying so is more useful than pretending it is actionable.
+- **Unexpected bonus, found while inspecting the suppression.** WASDE p12 held the *correct*
+  value `106.2 *` in col8, right beside the fragments — unusable only because the trailing
+  footnote marker made the cell fail the numeric test and be stored as text. `parse_cell` now
+  strips trailing footnote/status markers (`*`, `**`, `r` revised, `p` preliminary) when what
+  remains still parses as a number. Verified after re-ingestion: row 12 now offers
+  `101.8 / 110.1 / **106.2**` and hides `10` / `6.2`. So the pass did not just prevent a wrong
+  answer, it restored the right one. Unit-tested against negative cases so genuine text cells
+  ("Total loans", "All Other", "Q1") are untouched.

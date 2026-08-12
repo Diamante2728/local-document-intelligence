@@ -84,6 +84,16 @@ def ingest_all():
     else:
         print("  no prose chunks extracted — skipping index build")
 
+    # Verify stored cells against the source page text BEFORE building the retrieval index,
+    # so split-number fragments are already suppressed from the answer path.
+    from . import verify_cells
+    print("Verifying stored cells against source page text...")
+    suspect_counts = verify_cells.run(conn, CORPUS_DIR)
+    n_split = sum(c["split"] for c in suspect_counts.values())
+    n_orphan = sum(c["orphan"] for c in suspect_counts.values())
+    print(f"  {n_split} split-number cells (suppressed from answers), "
+          f"{n_orphan} orphan-number cells (recorded only)")
+
     # Table retrieval index (kept separate from the prose index — see src/qa/table_index.py).
     # Imported lazily: src.qa imports from src.ingest, so a module-level import here would
     # create a cycle.

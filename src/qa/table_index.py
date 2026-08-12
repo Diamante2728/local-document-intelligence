@@ -7,6 +7,7 @@ what a question actually refers to.
 """
 import json
 import re
+import sqlite3
 from pathlib import Path
 
 import faiss
@@ -148,6 +149,24 @@ def list_numeric_cells(conn, doc_id, table_id, limit=40, query=None):
         (doc_id, table_id),
     ).fetchall()
 
+    # Cells the source-verification pass proved are fragments of a split number (see
+    # src/ingest/verify_cells.py) are withheld from the ANSWER path — computing on "10" when
+    # the page says 106.2 is exactly the confidently-wrong-number failure this project exists to
+    # prevent. Only the high-precision `split-number` class is suppressed; the broader
+    # `orphan-number` signal is recorded for diagnostics but is too noisy to hide data on.
+    # The rows stay in `tables` either way: the raw store remains a faithful record.
+    suppressed = set()
+    try:
+        suppressed = {
+            (r, c) for r, c in conn.execute(
+                "SELECT row, col FROM suspect_cells WHERE doc_id = ? AND table_id = ? "
+                "AND reason = 'split-number'",
+                (doc_id, table_id),
+            )
+        }
+    except sqlite3.OperationalError:
+        pass  # suspect_cells not built yet; fall back to unfiltered behaviour
+
     by_row = {}
     for r, c, value, unit, header in rows:
         by_row.setdefault(r, []).append((c, value, unit, header))
@@ -180,6 +199,8 @@ def list_numeric_cells(conn, doc_id, table_id, limit=40, query=None):
         if not _is_number(value):
             continue
         if r in section_at:
+            continue
+        if (r, c) in suppressed:
             continue
         out.append({
             "row": r, "col": c, "value": str(value).strip(), "unit": unit,
