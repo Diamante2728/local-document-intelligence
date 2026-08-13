@@ -45,7 +45,7 @@ Last updated: CLOSEOUT COMPLETE — all 4 deliverables covered, MEMO.md written.
 - [x] multi-doc path — **1/4 on gold set, 0/1 held-out**; known structural weakness,
       three designs tried and documented in AI_LOG.md
 
-## Phase 3 — Gold set & planted errors (1B) `[x] BUILT` `[!] NEEDS YOUR REVIEW`
+## Phase 3 — Gold set & planted errors (1B) `[x] COMPLETE — REVIEWED & APPROVED`
 
 - [x] `gold_set.json` — 20 questions (8 prose, 8 numeric, 4 multi-doc)
 - [x] every expected answer read from **source PDF**, not from the store
@@ -53,7 +53,7 @@ Last updated: CLOSEOUT COMPLETE — all 4 deliverables covered, MEMO.md written.
 - [x] `summary.md` — 15 claims, 6 planted errors (one of each required type)
 - [x] `answer_key.json` → `answer_key.enc` (Fernet)
 - [x] **security fix**: `.gitignore` trailing-comment bug — plaintext key was committable
-- [!] **you review every question + planted error** (spec Phase 3 step 4)
+- [x] **user reviewed every question + planted error — approved 2026-08-12** (spec Phase 3 step 4)
 
 ## Phase 4 — Verification layer (1C) `[x] COMPLETE`
 
