@@ -1,7 +1,20 @@
+# Pinned to the versions this build was measured on (Apple Silicon, Python 3.11).
+# Verified from a clean clone into a fresh conda env — see README section 2.
 mlx-lm==0.31.3
 sentence-transformers==5.7.0
 faiss-cpu==1.15.0
 pdfplumber==0.11.10
 pymupdf==1.28.2
-pandas==3.0.5
 cryptography==50.0.0
+
+# Imported directly by src/ even though pip would install them transitively
+# (huggingface_hub via mlx-lm, numpy via faiss/torch). Declared explicitly so a future
+# transitive bump cannot silently remove them — the clean-clone test flagged both as
+# undeclared direct imports.
+huggingface_hub==1.27.0
+numpy==2.4.6
+
+# NOTE: pandas was pinned in earlier revisions because the build spec suggested computing
+# numeric answers "in Python/pandas". It is deliberately NOT here: the numeric path queries
+# SQLite directly and operates on individual cells, so pandas was never imported. Shipping an
+# unused dependency in a reproducibility-critical requirements file is worse than omitting it.

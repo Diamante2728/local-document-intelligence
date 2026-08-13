@@ -14,10 +14,11 @@ that matches the key. Hiding that tension would be the dishonest option.
 Usage: python -m src.verify.score
 """
 import json
+import sys
 from collections import Counter
 from pathlib import Path
 
-from .keystore import decrypt_file
+from .keystore import MissingSecret, decrypt_file
 from .verify import run_all
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -228,7 +229,13 @@ def main():
               f"exact={m['verdict_exact_match']:.3f}")
         return
 
-    key = decrypt_file(REPO_ROOT / "answer_key.enc")
+    try:
+        key = decrypt_file(REPO_ROOT / "answer_key.enc")
+    except MissingSecret as e:
+        # Expected in a fresh clone. Print the explanation plainly rather than a traceback —
+        # an interviewer following the README will hit this, and a stack trace reads like a bug.
+        print(f"\ncannot decrypt answer_key.enc\n\n{e}\n", file=sys.stderr)
+        raise SystemExit(2)
     print("Running verification over 15 claims...")
     claims, results = run_all()
     rows, m = score(results, key)
