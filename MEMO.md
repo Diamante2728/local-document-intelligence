@@ -11,7 +11,15 @@ Model: `mlx-community/Qwen2.5-7B-Instruct-4bit`, fully offline at runtime.
 | gold set (development, tuned against) | **11/20 = 0.55** | 6/8 | 4/8 | 1/4 | 99.7 s |
 | held-out (7 documents never inspected) | **8/9 = 0.889** | 8/8 | **0 questions** | 0/1 | 29.3 s |
 
-Verification layer (1C): precision **0.500**, recall 0.333, 3-way exact-match **0.667**.
+Verification layer (1C): precision **0.500**, recall 0.333, 3-way exact-match **0.667**, over 15
+claims of which 6 are planted errors.
+
+**Positive class, stated because precision/recall are meaningless without it:** *positive = the
+claim is a planted error*, and the verifier *predicts positive when it returns `contradicted`*.
+One planted error (claim 14, unsupported inference) has `unverifiable` as its **correct** verdict,
+so answering it correctly scores as a false negative under this definition — which is why the
+3-way exact-match figure is reported alongside, crediting every correct verdict. Full confusion
+matrix in `results/verification_report.md`.
 
 ---
 
@@ -232,7 +240,8 @@ would have scored lower, not higher.
 
 ## 6. AI disclosure
 
-Assistant: **Claude (Claude Code, Opus 5)**, used throughout — corpus selection and URL
+Assistant: **Claude Opus 5** (exact model identifier `claude-opus-5`), used via the Claude Code
+CLI. Used throughout — corpus selection and URL
 verification, all ingestion/QA/verification/benchmark code, the gold set and planted errors, and
 drafting these results documents. Full running log in `AI_LOG.md`.
 
