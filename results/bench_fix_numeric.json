@@ -1,0 +1,188 @@
+{
+  "summary": {
+    "label": "fix_numeric",
+    "model_id": null,
+    "n": 8,
+    "accuracy_overall": 0.5,
+    "citation_rate": 1.0,
+    "by_type": {
+      "numeric": {
+        "n": 8,
+        "correct": 4,
+        "cited": 8,
+        "accuracy": 0.5
+      }
+    },
+    "latency_p50_s": 117.03,
+    "latency_p95_s": 153.9,
+    "latency_mean_s": 118.45,
+    "wall_clock_s": 954.7,
+    "mlx_peak_gb_max": 5.286,
+    "os_footprint_gb_max": 6.16,
+    "mlx_vs_os_gap_gb": 0.874,
+    "swap_after_mb": 2150.69,
+    "swap_max_delta_mb": 765.1
+  },
+  "rows": [
+    {
+      "id": "N01",
+      "type": "numeric",
+      "correct": true,
+      "citation_ok": true,
+      "why": "got 0.6 want 0.6",
+      "latency_s": 123.97,
+      "confidence": 0.727,
+      "path": "numeric",
+      "memory": {
+        "mlx_peak_gb": 5.248,
+        "os_rss_end_gb": 0.074,
+        "os_footprint_gb": 5.674,
+        "swap_start_mb": 828.12,
+        "swap_end_mb": 1593.19,
+        "swap_delta_mb": 765.07,
+        "elapsed_s": 123.97
+      },
+      "error": null
+    },
+    {
+      "id": "N02",
+      "type": "numeric",
+      "correct": true,
+      "citation_ok": true,
+      "why": "got 1.8 want 1.8",
+      "latency_s": 67.91,
+      "confidence": 0.775,
+      "path": "numeric",
+      "memory": {
+        "mlx_peak_gb": 5.248,
+        "os_rss_end_gb": 0.051,
+        "os_footprint_gb": 5.762,
+        "swap_start_mb": 1593.19,
+        "swap_end_mb": 1601.75,
+        "swap_delta_mb": 8.559999999999945,
+        "elapsed_s": 67.91
+      },
+      "error": null
+    },
+    {
+      "id": "N03",
+      "type": "numeric",
+      "correct": false,
+      "citation_ok": true,
+      "why": "no numeric value produced (answer='The net charge-off rate for credit card loans at all insured')",
+      "latency_s": 150.22,
+      "confidence": 0.693,
+      "path": "numeric->prose",
+      "memory": {
+        "mlx_peak_gb": 5.286,
+        "os_rss_end_gb": 0.047,
+        "os_footprint_gb": 5.642,
+        "swap_start_mb": 1601.75,
+        "swap_end_mb": 1673.75,
+        "swap_delta_mb": 72.0,
+        "elapsed_s": 150.22
+      },
+      "error": null
+    },
+    {
+      "id": "N04",
+      "type": "numeric",
+      "correct": true,
+      "citation_ok": true,
+      "why": "got 498.5 want 498.5",
+      "latency_s": 125.34,
+      "confidence": 0.653,
+      "path": "numeric",
+      "memory": {
+        "mlx_peak_gb": 5.111,
+        "os_rss_end_gb": 0.046,
+        "os_footprint_gb": 5.669,
+        "swap_start_mb": 1673.75,
+        "swap_end_mb": 1722.69,
+        "swap_delta_mb": 48.940000000000055,
+        "elapsed_s": 125.34
+      },
+      "error": null
+    },
+    {
+      "id": "N05",
+      "type": "numeric",
+      "correct": false,
+      "citation_ok": true,
+      "why": "got 1.8199999999999998 want 0.91",
+      "latency_s": 110.09,
+      "confidence": 0.509,
+      "path": "numeric",
+      "memory": {
+        "mlx_peak_gb": 5.248,
+        "os_rss_end_gb": 0.041,
+        "os_footprint_gb": 6.16,
+        "swap_start_mb": 1722.69,
+        "swap_end_mb": 1589.44,
+        "swap_delta_mb": -133.25,
+        "elapsed_s": 110.09
+      },
+      "error": null
+    },
+    {
+      "id": "N06",
+      "type": "numeric",
+      "correct": false,
+      "citation_ok": true,
+      "why": "got -1.2000000000000002 want 1.2",
+      "latency_s": 104.8,
+      "confidence": 0.493,
+      "path": "numeric",
+      "memory": {
+        "mlx_peak_gb": 5.248,
+        "os_rss_end_gb": 0.049,
+        "os_footprint_gb": 5.844,
+        "swap_start_mb": 1589.44,
+        "swap_end_mb": 1729.88,
+        "swap_delta_mb": 140.44000000000005,
+        "elapsed_s": 104.8
+      },
+      "error": null
+    },
+    {
+      "id": "N07",
+      "type": "numeric",
+      "correct": true,
+      "citation_ok": true,
+      "why": "got 1.53 want 1.53",
+      "latency_s": 155.89,
+      "confidence": 0.741,
+      "path": "numeric",
+      "memory": {
+        "mlx_peak_gb": 5.248,
+        "os_rss_end_gb": 0.056,
+        "os_footprint_gb": 5.688,
+        "swap_start_mb": 1729.88,
+        "swap_end_mb": 2055.56,
+        "swap_delta_mb": 325.67999999999984,
+        "elapsed_s": 155.89
+      },
+      "error": null
+    },
+    {
+      "id": "N08",
+      "type": "numeric",
+      "correct": false,
+      "citation_ok": true,
+      "why": "no numeric value produced (answer='Total loans and leases outstanding, in billions of dollars, ')",
+      "latency_s": 109.42,
+      "confidence": 0.596,
+      "path": "numeric->prose",
+      "memory": {
+        "mlx_peak_gb": 5.16,
+        "os_rss_end_gb": 0.059,
+        "os_footprint_gb": 5.677,
+        "swap_start_mb": 2055.56,
+        "swap_end_mb": 2150.69,
+        "swap_delta_mb": 95.13000000000011,
+        "elapsed_s": 109.42
+      },
+      "error": null
+    }
+  ]
+}

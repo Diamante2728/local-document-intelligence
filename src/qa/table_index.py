@@ -15,9 +15,28 @@ import faiss
 from ..ingest.embed import get_model
 
 TABLE_INDEX_DIR = Path(__file__).resolve().parents[2] / "index"
-MAX_PREVIEW_ROWS = 12
-MAX_PREVIEW_COLS = 8
-MAX_CELL_CHARS = 40  # keeps a rendered grid row on one line; see render_table_grid
+MAX_PREVIEW_ROWS = 24        # was 12 — too few to reach past the first section of a stacked table
+MAX_PREVIEW_COLS = 10
+MAX_PREVIEW_SECTIONS = 8     # section banners are the most discriminative terms; keep them all
+PREVIEW_HARVEST_CELLS = 400  # how deep to scan a table when harvesting label vocabulary
+MAX_CELL_CHARS = 40          # keeps a rendered grid row on one line; see render_table_grid
+
+# Page furniture that pdfplumber sweeps into header/label positions on statistical publications.
+# Left in, it dilutes the preview embedding with terms shared by every table in the document —
+# FDIC p12_t0's preview was carrying "QUARTERLY", "2024 VOLUME", "NUMBER 2" and the report title,
+# none of which distinguishes it from any other page of the same report.
+_FURNITURE_PATTERNS = re.compile(
+    r"^(?:quarterly|volume|number\s*\d*|\d{4}\s+volume|table\s+[ivx]+-?[a-z]?\b.*|"
+    r"[a-z]+\s+\d{1,2},\s+\d{4}|page\s*\d+|\d+)$",
+    re.IGNORECASE,
+)
+
+
+def _is_page_furniture(text):
+    t = " ".join(str(text).split())
+    if len(t) < 3:
+        return True
+    return bool(_FURNITURE_PATTERNS.match(t))
 
 # DECISION: which tables are eligible for numeric retrieval
 # Only tables with >= MIN_TABLE_CELLS non-empty cells AND >= MIN_TABLE_NUMERICS cleanly-parsed
@@ -244,21 +263,38 @@ def build_table_previews(conn):
         if not is_retrievable_table(conn, doc_id, table_id):
             skipped += 1
             continue
-        headers = conn.execute(
-            "SELECT DISTINCT header FROM tables WHERE doc_id = ? AND table_id = ? "
-            "AND header IS NOT NULL AND header != ''",
-            (doc_id, table_id),
-        ).fetchall()
-        row_labels = conn.execute(
-            "SELECT value FROM tables WHERE doc_id = ? AND table_id = ? AND col = 0 "
-            "AND value IS NOT NULL ORDER BY row LIMIT ?",
-            (doc_id, table_id, MAX_PREVIEW_ROWS),
-        ).fetchall()
+        # Build the preview from the SAME label derivation the planner sees, not from a raw
+        # `col = 0 LIMIT 12` query.
+        #
+        # Why this changed: the old query took the first 12 rows in row order, which on a
+        # multi-section table covers only the FIRST metric block. FDIC Table V-A (p12_t0) stacks
+        # five blocks, so its preview contained "Percent of Loans 30-89 Days Past Due" but NOT
+        # "Percent of Loans Noncurrent", "Loans Outstanding (in billions)" or "Memo: Other Real
+        # Estate Owned". A question asking about loans *outstanding* therefore had no lexical
+        # overlap with the one table that holds the answer, and lost retrieval to an unrelated
+        # balance-sheet table. Three gold numeric questions (N04, N05, N08) failed this way —
+        # the planner never saw the right table, so no amount of cell-selection logic could help.
+        cells = list_numeric_cells(conn, doc_id, table_id, limit=PREVIEW_HARVEST_CELLS)
+        sections, row_labels, headers = [], [], []
+        for c in cells:
+            for value, bucket, cap in (
+                (c["section"], sections, MAX_PREVIEW_SECTIONS),
+                (c["row_label"], row_labels, MAX_PREVIEW_ROWS),
+                (c["header"], headers, MAX_PREVIEW_COLS),
+            ):
+                v = (value or "").strip()
+                if v and v not in bucket and len(bucket) < cap and not _is_page_furniture(v):
+                    bucket.append(v)
 
-        header_text = " | ".join(h[0] for h in headers)
-        label_text = " ; ".join(str(r[0]) for r in row_labels)
         title = titles.get(doc_id, doc_id)
-        preview = f"{title} (page {page}). Columns: {header_text}. Rows: {label_text}"
+        # Sections first: they are the most discriminative terms on a stacked table, and are
+        # exactly what distinguishes "noncurrent rate" from "loans outstanding" on the same rows.
+        preview = (
+            f"{title} (page {page}). "
+            f"Sections: {' ; '.join(sections)}. "
+            f"Rows: {' ; '.join(row_labels)}. "
+            f"Columns: {' | '.join(headers)}"
+        )
 
         previews.append({
             "doc_id": doc_id, "table_id": table_id, "page": page, "preview": preview,

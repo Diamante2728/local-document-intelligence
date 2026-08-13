@@ -4,6 +4,8 @@ The prompt deliberately never asks for a result value, and `parse_plan` delibera
 reads one even if the model volunteers it — the only path to a number is `compute.execute_plan`
 running Python over SQLite cells (constraint #2).
 """
+import re
+
 from .compute import SUPPORTED_OPS, CellRef
 from .llm import extract_json, generate_text
 
@@ -39,8 +41,12 @@ PLAN_SYSTEM = (
     '"reasoning": "<one short sentence>"}\n\n'
     f"Valid operations: {', '.join(sorted(SUPPORTED_OPS))}.\n"
     "- lookup: exactly 1 cell id\n"
-    "- diff / ratio / pct_change: exactly 2 cell ids, ordered [first, second]. "
-    "For pct_change the order is [old, new].\n"
+    "- diff: exactly 2 cell ids. The result is computed as cells[0] MINUS cells[1]. "
+    "For a question of the form 'how much HIGHER/MORE/GREATER is X than Y', put X first and Y "
+    "second so the answer comes out positive. For 'how much LOWER/LESS is X than Y', still put "
+    "X first — the negative sign is the answer.\n"
+    "- ratio: exactly 2 cell ids, computed as cells[0] / cells[1] (numerator first).\n"
+    "- pct_change: exactly 2 cell ids ordered [old, new] — the earlier period first.\n"
     "- sum / mean / max / min: 2 or more cell ids\n\n"
     "Each candidate table lists its available cells as:\n"
     '  [<cell id>] <value>  (row: "<row label>" | column: "<column header>" '
@@ -148,8 +154,53 @@ def parse_plan(raw_response, labelled):
     return {
         "doc_id": doc_id, "table_id": table_id, "page": chosen.get("page"),
         "operation": operation, "cells": cells, "selected": selected,
+        "chosen_cells": [cell_lookup[int(c) if not isinstance(c, dict) else
+                                     c.get("id", c.get("cell", c.get("cell_id")))]
+                         for c in raw_cells],
         "reasoning": str(data.get("reasoning", ""))[:300],
     }, None
+
+
+# Evidence gate for a chosen cell — ported from verify.py, where the same check took
+# verification precision from 0.300 to 0.500 by making the recompute decline rather than
+# manufacture a contradiction.
+#
+# The QA numeric path had no equivalent and would happily return whatever cell the planner
+# named: observed answers include "2,022" (a YEAR, returned at confidence 0.726 for a poverty-rate
+# question) and "9". A number coming back is not evidence the right cell was found, so require
+# the chosen cell's own labels to overlap the question before trusting it.
+MIN_CELL_TERM_OVERLAP = 2
+_CELL_STOPWORDS = {
+    "the", "and", "for", "was", "were", "with", "from", "that", "this", "than", "percent",
+    "billion", "billions", "million", "millions", "total", "all", "how", "much", "many",
+    "what", "were", "dollars", "rate", "rates",
+}
+
+
+def _q_terms(text):
+    return {t for t in re.findall(r"[a-z]+", str(text).lower())
+            if len(t) > 3 and t not in _CELL_STOPWORDS}
+
+
+def cell_supports_question(question, cell):
+    """True when the chosen cell's labels genuinely relate to the question.
+
+    Prefix-tolerant so 'outstanding'/'Outstanding' and 'charge-off'/'Charged-Off' agree.
+    """
+    q = _q_terms(question)
+    if not q:
+        return True, "question had no distinctive terms to check against"
+    ctx = _q_terms(f'{cell.get("row_label","")} {cell.get("header","")} {cell.get("section","")}')
+    hits = 0
+    for qt in q:
+        for ct in ctx:
+            if qt == ct or qt.startswith(ct[:5]) or ct.startswith(qt[:5]):
+                hits += 1
+                break
+    ok = hits >= MIN_CELL_TERM_OVERLAP
+    detail = (f'cell labels overlap question on {hits} term(s) '
+              f'(row="{cell.get("row_label","")[:30]}", section="{cell.get("section","")[:30]}")')
+    return ok, detail
 
 
 def make_plan(question, candidates, conn, max_tokens=250):

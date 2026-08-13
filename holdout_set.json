@@ -1,0 +1,111 @@
+{
+  "_meta": {
+    "purpose": "HELD-OUT evaluation set. Exists so that improvements made while looking at gold_set.json can be reported with an honest generalization number instead of a score on the set they were tuned against.",
+    "discipline": "Written AFTER fixes 1-3 were designed, from documents that contribute to NO question in gold_set.json. Nothing in these documents was inspected while diagnosing the INT4 failures.",
+    "held_out_documents": [
+      "epa_automotive_trends_2024_exec_summary",
+      "usda_wasde_2026_06",
+      "census_ft900_trade_2024_03",
+      "treasury_monthly_statement_2024_06",
+      "usda_agricultural_prices_2025_09",
+      "fed_survey_consumer_finances_2022",
+      "oecd_economic_outlook_116_annex"
+    ],
+    "gold_set_documents_excluded": [
+      "fdic_quarterly_banking_profile_2024q1", "bea_gdp_2024q1_second_estimate",
+      "bea_personal_income_outlays_2024_04", "bea_international_transactions_2024q1",
+      "census_housing_vacancies", "census_poverty_2022_p60_280",
+      "fed_monetary_policy_report_2024_03", "eia_short_term_energy_outlook_2025_05",
+      "worldbank_commodity_markets_2025_04"
+    ],
+    "why_prose_only": "NUMERIC HELD-OUT QUESTIONS ARE NOT INCLUDED, AND THAT IS ITSELF A FINDING. Table extraction on these documents is too corrupted to serve as ground truth: sampled cells carry row labels like 'Billion $53', '9 Billion', '0 Billion', '2023 and 2024', and values like '024.' and '2024.'. They are text-fallback tables whose labels fragmented (defect class L2/L3 in results/known_limitations.md). Writing numeric questions against them would measure extraction quality, not model quality, and any score would be uninterpretable.\n\nThe corollary is a sampling bias in the ORIGINAL gold set that should be stated plainly in the memo: all 8 of its numeric questions come from the FDIC Quarterly Banking Profile, because FDIC is the only corpus document whose multi-section tables survived extraction cleanly enough to key questions against. So gold-set numeric accuracy describes performance on well-extracted tables, not on this corpus as a whole.",
+    "provenance": "Every expected answer below was read verbatim from the source PDF page text (PyMuPDF), quoted in the verification_quote field.",
+    "counts": {"prose": 8, "numeric": 0, "multi-doc": 1, "total": 9}
+  },
+  "questions": [
+    {
+      "id": "H01",
+      "type": "prose",
+      "question": "By how much did real-world fuel economy increase, and what record high did it reach?",
+      "expected_answer": "Real-world fuel economy increased by 1.1 mpg to a record high 27.1 mpg.",
+      "expected_citation": {"doc": "epa_automotive_trends_2024_exec_summary", "page": 4},
+      "answer_contains": ["1.1", "27.1"],
+      "verification_quote": "Real-world fuel economy increased by 1.1 mpg to a record high 27.1mpg."
+    },
+    {
+      "id": "H02",
+      "type": "prose",
+      "question": "Which large manufacturer had the highest new vehicle average CO2 emissions in model year 2023, and at what level?",
+      "expected_answer": "Stellantis, at 402 g/mi, had the highest new vehicle average CO2 emissions and the lowest fuel economy of the large manufacturers.",
+      "expected_citation": {"doc": "epa_automotive_trends_2024_exec_summary", "page": 10},
+      "answer_contains": ["402"],
+      "verification_quote": "At 402 g/mi, Stellantis had the highest new vehicle average CO2 emissions and lowest fuel economy of the large manufacturers in model year 2023"
+    },
+    {
+      "id": "H03",
+      "type": "prose",
+      "question": "Which manufacturer achieved the largest reduction in CO2 emissions between model years 2018 and 2023, and by how much?",
+      "expected_answer": "Mercedes achieved the largest reduction in CO2 emissions, at 73 g/mi.",
+      "expected_citation": {"doc": "epa_automotive_trends_2024_exec_summary", "page": 10},
+      "answer_contains": ["73"],
+      "verification_quote": "Between model years 2018 and 2023, Mercedes achieved the largest reduction in CO2 emissions, at 73 g/mi."
+    },
+    {
+      "id": "H04",
+      "type": "prose",
+      "question": "What were projected wheat exports in million bushels, and how did that compare with the prior year?",
+      "expected_answer": "Exports are unchanged at 775 million bushels, down 15 percent from the prior year.",
+      "expected_citation": {"doc": "usda_wasde_2026_06", "page": 1},
+      "answer_contains": ["775"],
+      "verification_quote": "Exports are unchanged at 775 million bushels, down 15 percent from the prior year."
+    },
+    {
+      "id": "H05",
+      "type": "prose",
+      "question": "By how much were projected wheat ending stocks reduced, and to what level?",
+      "expected_answer": "Projected ending stocks are reduced 18 million bushels to 744 million, 20 percent below the previous year.",
+      "expected_citation": {"doc": "usda_wasde_2026_06", "page": 1},
+      "answer_contains": ["744"],
+      "verification_quote": "Projected ending stocks are reduced 18 million bushels to 744 million, 20 percent below the previous year."
+    },
+    {
+      "id": "H06",
+      "type": "prose",
+      "question": "What was the U.S. goods and services trade deficit in March, and how did it change from February?",
+      "expected_answer": "The goods and services deficit was $69.4 billion in March, down $0.1 billion from $69.5 billion in February.",
+      "expected_citation": {"doc": "census_ft900_trade_2024_03", "page": 1},
+      "answer_contains": ["69.4"],
+      "verification_quote": "the goods and services deficit was $69.4 billion in March, down $0.1 billion from $69.5 billion in February, revised."
+    },
+    {
+      "id": "H07",
+      "type": "prose",
+      "question": "What were March exports and how did they compare with February exports?",
+      "expected_answer": "March exports were $257.6 billion, $5.3 billion less than February exports.",
+      "expected_citation": {"doc": "census_ft900_trade_2024_03", "page": 1},
+      "answer_contains": ["257.6"],
+      "verification_quote": "March exports were $257.6 billion, $5.3 billion less than February exports."
+    },
+    {
+      "id": "H08",
+      "type": "prose",
+      "question": "What were March imports of goods and services?",
+      "expected_answer": "March imports were $327.0 billion, $5.4 billion less than February imports.",
+      "expected_citation": {"doc": "census_ft900_trade_2024_03", "page": 1},
+      "answer_contains": ["327.0"],
+      "verification_quote": "March imports were $327.0 billion, $5.4 billion less than February imports."
+    },
+    {
+      "id": "H09",
+      "type": "multi-doc",
+      "question": "The EPA automotive trends report and the USDA WASDE report cover different sectors. What record-high real-world fuel economy does EPA report, and what wheat export figure in million bushels does WASDE report?",
+      "expected_answer": "EPA reports a record high 27.1 mpg real-world fuel economy; WASDE reports wheat exports unchanged at 775 million bushels.",
+      "expected_citation": [
+        {"doc": "epa_automotive_trends_2024_exec_summary", "page": 4},
+        {"doc": "usda_wasde_2026_06", "page": 1}
+      ],
+      "answer_contains": ["27.1", "775"],
+      "note": "Deliberately pairs two unrelated sectors. A multi-doc path that only retrieves topically-similar documents will fail this, which is the point: it tests whether the path can genuinely combine two sources rather than finding one document that looks like it covers both."
+    }
+  ]
+}

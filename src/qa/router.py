@@ -19,13 +19,21 @@
 """
 import re
 
+# NOTE: a bare `\d` was originally in this list and it wrecked routing. Almost every question
+# about economic data contains a year ("in the first quarter of 2024"), so the digit cue fired on
+# effectively everything and 7 of 8 prose gold questions were routed to the numeric path. Measured
+# rules-only routing accuracy was 60%. Cues must indicate a TABLE LOOKUP, not the mere presence
+# of a number — the answer to "by how much did GDP increase" is a number too, but it lives in a
+# sentence, not a cell.
 NUMERIC_CUES = [
-    r"\bhow much\b", r"\bhow many\b", r"\btotal\b", r"\bsum\b", r"\baverage\b", r"\bmean\b",
-    r"\bpercent\b", r"\bpercentage\b", r"\bratio\b", r"\brate\b", r"\bchange\b", r"\bgrowth\b",
-    r"\bincrease\b", r"\bdecrease\b", r"\bdifference\b", r"\bhigher\b", r"\blower\b",
+    r"\btotal\b", r"\bsum\b", r"\baverage\b", r"\bmean\b",
+    r"\bratio\b", r"\bchange\b", r"\bgrowth\b",
+    r"\bdifference\b", r"\bhigher\b", r"\blower\b",
     r"\bmaximum\b", r"\bminimum\b", r"\blargest\b", r"\bsmallest\b", r"\bvalue of\b",
-    r"\bwhat was the .*\b(?:value|amount|level|figure|number|count|rate)\b",
-    r"\$", r"\d",
+    r"\bhow much (?:higher|lower|more|less|greater)\b",
+    r"\bwhat (?:was|is) the .*\brate\b",
+    r"\bpercent of\b", r"\bwhat percent\b",
+    r"\bhow many (?:billions|millions|thousands|dollars)\b",
 ]
 
 MULTIDOC_CUES = [
@@ -35,10 +43,14 @@ MULTIDOC_CUES = [
     r"\bdiffer\b", r"\bdiscrepan\w+\b", r"\bcontradic\w+\b",
 ]
 
+# A generic interrogative opener ("what was the ...") was originally a prose cue. It matches
+# almost every question ever asked, so it carried no signal while still cancelling out specific
+# numeric cues one-for-one — four numeric gold questions tied 1-1 and defaulted to prose. Prose
+# cues must indicate NARRATIVE content, not merely that a question is a question.
 PROSE_CUES = [
-    r"^\s*(?:what|who|why|how) (?:is|are|was|were|does|do|did)\b",
     r"\bdescribe\b", r"\bexplain\b", r"\bsummar\w+\b", r"\bdefine\b", r"\bdefinition\b",
     r"\baccording to\b", r"\bstate[sd]?\b", r"\breason\b", r"\bpurpose\b", r"\bmethodology\b",
+    r"\bwhy\b", r"\bhow did\b", r"\bwhat does .* mean\b", r"\bcharacteri[sz]e\b",
 ]
 
 ROUTER_SYSTEM = (

@@ -1,0 +1,19 @@
+{
+  "repo": "mlx-community/Qwen2.5-7B-Instruct-8bit",
+  "loaded": true,
+  "generated": false,
+  "swap_before_mb": 1007.62,
+  "error": "RuntimeError: [METAL] Command buffer execution failed: Insufficient Memory (00000008:kIOGPUCommandBufferCallbackErrorOutOfMemory).",
+  "load_s": 10.2,
+  "memory": {
+    "mlx_peak_gb": 8.123,
+    "os_rss_end_gb": 0.012,
+    "os_footprint_gb": 7.998,
+    "swap_start_mb": 1007.62,
+    "swap_end_mb": 3951.81,
+    "swap_delta_mb": 2944.19,
+    "elapsed_s": 35.84
+  },
+  "swap_after_mb": 3951.81,
+  "swap_delta_mb": 2944.2
+}

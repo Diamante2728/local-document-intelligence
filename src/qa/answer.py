@@ -11,6 +11,7 @@ from ..ingest.embed import load_index, search
 from .compute import ComputeError, execute_plan
 from .llm import generate_text
 from .plan import make_plan
+from .hybrid import rrf_fuse
 from .router import route
 from .table_index import load_table_index, search_tables
 
@@ -46,12 +47,34 @@ TOP_K_TABLES = 3  # measured: k=5 put the planning prompt near 50s/question on t
 # change when nothing about the evidence changed.
 PATH_FACTOR = {"numeric": 1.0, "multi-doc": 0.9, "prose": 0.85}
 
+# Routing confidences at or below this are treated as a weak call, and the numeric path's answer
+# is checked against the prose path before being returned. route_rules() emits 0.85 for a clear
+# signal and 0.7 for "some numeric cue, no prose cue" — the latter is exactly the band where
+# "what was the <X> rate" questions land, and where the answer may live in prose rather than a cell.
+ROUTE_CONFIDENT = 0.7
+
+# (A MULTIDOC_NUMERIC_MIN_CONF threshold lived here and was removed — measurement showed table
+#  retrieval scores do not separate "answer is in a table" from "answer is in prose on the same
+#  topic". See the rationale block in answer_multidoc().)
+
 PROSE_SYSTEM = (
     "Answer the question using ONLY the provided excerpts. Quote or closely paraphrase them. "
     "If the excerpts do not contain the answer, reply exactly: NOT_IN_CONTEXT. "
     "Never state a numeric figure that does not appear verbatim in the excerpts. "
     "Keep the answer to 1-3 sentences."
 )
+
+
+_bm25 = None
+
+
+def _get_bm25(conn):
+    """BM25 index over prose chunks, built once per process (~1s over 3,861 chunks)."""
+    global _bm25
+    if _bm25 is None:
+        from .hybrid import build_bm25
+        _bm25 = build_bm25(conn)
+    return _bm25
 
 
 def get_conn(db_path=DB_PATH):
@@ -65,8 +88,28 @@ def _fetch_chunk_text(conn, chunk_id):
     return row[0] if row else ""
 
 
-def answer_prose(question, conn, prose_index, prose_map, top_k=TOP_K_PROSE):
-    hits = search(question, prose_index, prose_map, top_k=top_k)
+def answer_prose(question, conn, prose_index, prose_map, top_k=TOP_K_PROSE, doc_ids=None):
+    # DECISION: hybrid retrieval (dense + BM25, fused with RRF)
+    # Dense-only retrieval missed P07 entirely: the answer sits in FDIC p1 and the chunk is in
+    # the store, but a 384-dim embedding of a long page does not preserve the tokens that pin
+    # the fact down ("FDIC-insured", "64.2"). BM25 ranks that same chunk FIRST (score 36.5),
+    # because rare exact terms are precisely what document-frequency weighting rewards.
+    # Fusion is Reciprocal Rank Fusion — BM25 scores and cosine similarities are on
+    # incomparable scales, and RRF only consumes rank order, so no cross-calibration is needed.
+    # Rejected: score-normalised averaging (requires calibrating two different scales, and the
+    # calibration would have to be fitted on the gold set).
+    fetch = top_k * 10 if doc_ids else top_k * 3
+    dense = search(question, prose_index, prose_map, top_k=fetch)
+    lexical = []
+    try:
+        bm25 = _get_bm25(conn)
+        lexical = bm25.search(question, top_k=fetch, doc_ids=doc_ids)
+    except Exception:
+        pass  # lexical is an enhancement; dense alone must still work
+
+    if doc_ids:
+        dense = [h for h in dense if h["doc_id"] in doc_ids]
+    hits = rrf_fuse(dense, lexical, top_k=top_k) if lexical else dense[:top_k]
     if not hits:
         return {
             "answer": "No relevant passage was retrieved.", "citations": [],
@@ -117,6 +160,24 @@ def answer_numeric(question, conn, table_index, table_map, top_k=TOP_K_TABLES, d
             "notes": [f"planning failed: {error}", f"raw model output: {raw.strip()[:200]}"],
         }
 
+    # Evidence gate BEFORE computing: does the cell the planner chose actually relate to the
+    # question? Without this the path returns whatever it was handed — observed "2,022" (a year)
+    # at confidence 0.726 for a poverty-rate question. Returning no value routes the caller to
+    # the prose fallback, which is the honest outcome when the table evidence is not there.
+    from .plan import cell_supports_question
+    unsupported = [c for c in plan.get("chosen_cells", [])
+                   if not cell_supports_question(question, c)[0]]
+    if unsupported and len(unsupported) == len(plan.get("chosen_cells", [])):
+        _ok, detail = cell_supports_question(question, unsupported[0])
+        return {
+            "answer": f"No table cell matching the question was found ({detail}).",
+            "citations": [{"doc": plan["doc_id"], "page": plan.get("page"),
+                           "table_id": plan["table_id"]}],
+            "path_taken": path_label, "confidence": 0.0,
+            "notes": [f"evidence gate rejected the planner's cell(s): {detail}",
+                      f"planner had chosen: {plan.get('selected')}"],
+        }
+
     try:
         result = execute_plan(conn, plan["operation"], plan["cells"])
     except ComputeError as e:
@@ -158,40 +219,93 @@ def answer_numeric(question, conn, table_index, table_map, top_k=TOP_K_TABLES, d
 
 
 def answer_multidoc(question, conn, prose_index, prose_map, table_index, table_map):
-    """Answer across >=2 documents, citing each. Numeric sub-answers still go through compute."""
-    table_hits = search_tables(question, table_index, table_map, top_k=TOP_K_TABLES * 2)
-    docs_seen, per_doc = [], []
-    for hit in table_hits:
-        if hit["doc_id"] in docs_seen:
-            continue
-        docs_seen.append(hit["doc_id"])
-        if len(docs_seen) > 2:
-            break
+    """Answer across >=2 documents, citing each source separately.
 
+    Each document gets a numeric sub-answer first (still computed in Python, constraint #2). If a
+    document yields no number, it gets a PROSE sub-answer confined to that document.
+
+    The prose arm is not an embellishment — without it this path could not answer most multi-doc
+    questions at all. It originally ran the numeric path only and demanded a number from both
+    documents, so questions whose facts live in sentences ("what GDP growth rate does BEA report,
+    and what target range does the Fed report holding") returned "Could not compute a comparable
+    figure" every time: 0 of 4 on the gold set, none of them a quantization effect.
+    """
+    # Candidate documents from BOTH indices: a document that is relevant in prose may contribute
+    # nothing to the table index, and picking candidates from tables alone hid exactly those.
+    docs_seen = []
+    for hit in search_tables(question, table_index, table_map, top_k=TOP_K_TABLES * 2):
+        if hit["doc_id"] not in docs_seen:
+            docs_seen.append(hit["doc_id"])
+    for hit in search(question, prose_index, prose_map, top_k=TOP_K_PROSE * 2):
+        if hit["doc_id"] not in docs_seen:
+            docs_seen.append(hit["doc_id"])
+
+    per_doc = []
     for doc_id in docs_seen[:2]:
-        sub = answer_numeric(question, conn, table_index, table_map,
-                             doc_ids={doc_id}, path_label="multi-doc")
-        per_doc.append({"doc_id": doc_id, **sub})
+        # PROSE FIRST, numeric as fallback — the opposite of the single-document paths.
+        #
+        # Two earlier designs failed here and the reason is worth keeping:
+        #   1. numeric-only, prose on `value is None`  -> the prose arm was dead code, because
+        #      the numeric path ALWAYS returns some number (observed: 9, 2,022, 159.2 pulled
+        #      from topically-related but wrong tables).
+        #   2. numeric first, prose when confidence < 0.55 -> also never fired. Measured table
+        #      retrieval for these questions: M01 0.719, M03 0.789, M04 0.704 — indistinguishable
+        #      from a genuine numeric lookup. Retrieval score measures TOPICAL RELEVANCE, not
+        #      which representation holds the answer: an FDIC net-income question legitimately
+        #      matches FDIC tables strongly even though the figure lives in the narrative. No
+        #      threshold can separate those, so tuning one would just be fitting the gold set.
+        #
+        # The asymmetry that does work: the prose path can ADMIT FAILURE. It returns
+        # NOT_IN_CONTEXT (confidence 0.0) when the retrieved passages do not contain the answer.
+        # The numeric path has no equivalent signal — it always produces a value. So ask the arm
+        # that can say "I don't know" first, and only fall through when it does.
+        # Bonus: this is also cheaper — one LLM call per document when prose succeeds, not two.
+        sub = answer_prose(question, conn, prose_index, prose_map, doc_ids={doc_id})
+        mode = "prose"
+        if sub.get("confidence", 0.0) <= 0.0:
+            numeric_sub = answer_numeric(question, conn, table_index, table_map,
+                                         doc_ids={doc_id}, path_label="multi-doc")
+            if numeric_sub.get("value") is not None:
+                sub, mode = numeric_sub, "numeric"
+        per_doc.append({"doc_id": doc_id, "mode": mode, **sub})
 
-    usable = [p for p in per_doc if p.get("value") is not None]
-    citations = [c for p in per_doc for c in p["citations"]]
-    notes = [f'{p["doc_id"]}: {p["answer"]}' for p in per_doc]
+    contributing = [p for p in per_doc
+                    if p.get("value") is not None or p.get("confidence", 0) > 0]
+    citations = [c for p in contributing for c in p["citations"]]
+    notes = [f'{p["doc_id"]} ({p["mode"]}): {str(p["answer"])[:110]}' for p in per_doc]
+    modes = "+".join(sorted({p["mode"] for p in contributing})) or "none"
 
-    if len(usable) < 2:
+    if not contributing:
         return {
-            "answer": "Could not compute a comparable figure from two documents.",
-            "citations": citations, "path_taken": "multi-doc",
-            "confidence": 0.0,
-            "notes": notes + [f"only {len(usable)} of {len(per_doc)} documents yielded a value"],
+            "answer": "No source document could answer this question.",
+            "citations": citations, "path_taken": "multi-doc", "confidence": 0.0,
+            "notes": notes + ["0 of the candidate documents produced an answer"],
         }
 
-    a, b = usable[0], usable[1]
-    delta = a["value"] - b["value"]
-    rendered = (f'{a["doc_id"]}: {a["answer"]} vs {b["doc_id"]}: {b["answer"]} '
-                f'(difference {delta:,.4g})')
-    confidence = min(a["confidence"], b["confidence"])
-    return {"answer": rendered, "value": delta, "citations": citations,
-            "path_taken": "multi-doc", "confidence": round(confidence, 3), "notes": notes}
+    if len(contributing) < 2:
+        # Say plainly that only one source was used rather than implying a comparison happened.
+        only = contributing[0]
+        return {
+            "answer": f'Only one source could be used ({only["doc_id"]}): {only["answer"]}',
+            "citations": citations, "path_taken": f"multi-doc({modes}, single-source)",
+            "confidence": round(only.get("confidence", 0.0) * 0.6, 3),
+            "notes": notes + ["fewer than 2 documents contributed — this is NOT a comparison"],
+        }
+
+    a, b = contributing[0], contributing[1]
+    result = {
+        "answer": f'{a["doc_id"]}: {a["answer"]}  |  {b["doc_id"]}: {b["answer"]}',
+        "citations": citations,
+        "path_taken": f"multi-doc({modes})",
+        "confidence": round(min(a.get("confidence", 0.0), b.get("confidence", 0.0)), 3),
+        "notes": notes,
+    }
+    # A numeric difference is only meaningful when both sides are numbers.
+    if a.get("value") is not None and b.get("value") is not None:
+        delta = a["value"] - b["value"]
+        result["value"] = delta
+        result["answer"] += f" (difference {delta:,.4g})"
+    return result
 
 
 _resources = None
@@ -214,6 +328,35 @@ def answer(question, use_llm_router=True):
 
     if path == "numeric":
         result = answer_numeric(question, conn, table_index, table_map)
+        # The prose/numeric split is NOT fully determinable from the question text: "by how much
+        # did GDP increase" has a numeric answer that lives in a sentence, not a cell. When the
+        # numeric path cannot produce a value — no plan, no cell, non-numeric cell — fall back to
+        # prose rather than surfacing a refusal for a question the corpus can actually answer.
+        # This is a genuine recovery, not a way to hide the failure: the fallback is recorded in
+        # notes and path_taken becomes "numeric->prose" so the transcript stays honest.
+        # Two distinct triggers for consulting the prose path:
+        #   (a) the numeric path produced no value at all, or
+        #   (b) routing itself was a weak call (ROUTE_CONFIDENT or below). Case (b) matters
+        #       because a numeric lookup can succeed and still be nonsense: asked for the
+        #       homeownership rate — a figure that lives in prose — the numeric path confidently
+        #       returned 0.35 from an unrelated cell at confidence 0.692. A value being produced
+        #       is not evidence the right path was taken, so on an uncertain route we run both
+        #       and keep whichever has the stronger evidence.
+        weak_route = routing.get("confidence", 1.0) <= ROUTE_CONFIDENT
+        if result.get("value") is None or weak_route:
+            fallback = answer_prose(question, conn, prose_index, prose_map)
+            numeric_conf = result.get("confidence", 0.0) if result.get("value") is not None else -1
+            if fallback.get("confidence", 0) > max(numeric_conf, 0.0):
+                reason = ("numeric path produced no value" if result.get("value") is None
+                          else f"router was only {routing.get('confidence')} confident and the "
+                               f"prose path scored higher ({fallback['confidence']} vs "
+                               f"{result.get('confidence')})")
+                fallback["path_taken"] = "numeric->prose"
+                fallback.setdefault("notes", []).insert(
+                    0, f"{reason}; answered on the prose path instead "
+                       f"(numeric attempt: {str(result.get('answer'))[:60]})"
+                )
+                result = fallback
     elif path == "multi-doc":
         result = answer_multidoc(question, conn, prose_index, prose_map, table_index, table_map)
     else:

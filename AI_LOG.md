@@ -38,6 +38,82 @@ wrong that the user corrected. Feeds the AI-disclosure section of `MEMO.md`.
 - **Foundation check passed:** model loads and generates offline within budget (peak MLX memory
   4.41GB, well under the ~4-5GB usable budget on this 8GB machine). Proceeding to Phase 1.
 
+## Phase 5 — Quantization ladder (1D)
+
+### The router bug that would have invalidated the whole ladder
+
+- A 2-question smoke test (`--limit 2`) returned `'1'` for a prose question. Following it up with
+  an instant rules-only routing check over all 20 gold questions showed **routing accuracy of
+  60% — 7 of 8 prose questions misrouted to the numeric path**.
+- Cause: `NUMERIC_CUES` contained a bare `\d`. Every question about economic data contains a
+  year ("in the first quarter of 2024"), so the digit cue fired on essentially everything.
+- **Why this mattered more than a normal bug:** the ladder forces rules-only routing so that
+  routing noise cannot confound an INT4-vs-INT8 comparison. Had I gone straight to the full run,
+  INT4 would have scored badly and the ladder would have been measuring *my router*, not
+  quantization. The cheap smoke test paid for itself immediately.
+- Fixed by requiring cues that indicate a *table lookup* rather than the mere presence of a
+  number, and by dropping a generic `what was the ...` prose cue that matched nearly every
+  question while cancelling specific numeric cues one-for-one. **60% → 90%.**
+- The residual 2 are genuinely undecidable from question text: "what was the homeownership rate"
+  *sounds* like a table lookup, but that figure lives in a sentence. Added a numeric→prose
+  fallback for weakly-routed questions, which fixed them end-to-end.
+
+### Multi-doc: three designs, three distinct causes, then stopped
+
+Multi-doc scored **0/4**. It is not quantization damage — the path could not answer these
+questions by construction. Three attempts, each failing for a different reason:
+
+1. **numeric-only, prose on `value is None`** — the prose arm was *dead code*. The numeric path
+   always returns *a* number; observed junk values 9, 2,022 and 159.2 pulled from topically
+   related but wrong tables.
+2. **numeric first, prose when confidence < 0.55** — never fired. Measured table retrieval
+   scores: M01 0.719, M03 0.789, M04 0.704, indistinguishable from a genuine numeric lookup.
+   **The lesson: retrieval score measures topical relevance, not which representation holds the
+   answer.** An FDIC net-income question legitimately matches FDIC tables strongly even though
+   the figure lives in the narrative. No threshold can separate those.
+3. **prose-first, numeric fallback** — still took the numeric arm, because doc-filtered prose
+   retrieval returned `NOT_IN_CONTEXT`. A third distinct cause, this time inside the filtered
+   retrieval rather than in arm selection.
+
+**Decision: shipped as a documented weakness rather than attempting a fourth fix.** It is 4 of
+20 questions, each failure is understood at mechanism level, and citation coverage stayed 4/4
+throughout — the system cited real sources on every question it got wrong, which is itself worth
+recording as a caution against reading citation coverage as a quality signal.
+
+### A wrong "major finding" I retracted before acting on it
+
+While diagnosing multi-doc I reported that retrieval was returning entirely wrong documents for
+M01/M03 (top hits: census poverty, USDA prices; correct sources absent). I re-ran before acting
+on it and the real code path retrieved correctly — 0.761 `bea_gdp`, 0.751 `fed_mpr`. The bad
+result came from **my ad-hoc test script's import order**, not from the system. Recorded because
+the instinct that mattered was verifying a dramatic result before building on it.
+
+### Methodology mistake: I contaminated a running measurement
+
+Running embedding queries to investigate scores *while* a benchmark held the 7B model produced a
+hard GPU failure: `kIOGPUCommandBufferCallbackErrorOutOfMemory`. Two consequences, both worth
+stating:
+
+- **My error.** No concurrent GPU work during benchmarks. It also means the earlier 494 s
+  latency outlier is suspect and should not be quoted as a clean measurement.
+- **Genuine evidence.** An 8 GB M1 cannot hold the 7B INT4 model and a 130 MB embedding model on
+  the GPU simultaneously without the allocator failing. That is a harder, more citable data
+  point for the deployment recommendation than the weight arithmetic alone.
+
+### Measurement findings before any rung was run
+
+- **`ps` RSS is useless on Metal**: ~50 MB reported against ~5.6 GB `footprint` for the same
+  loaded model, because unified-memory buffers are not counted in RSS. Switched the harness to
+  report `footprint` alongside `mx.get_peak_memory()`.
+- The MLX-vs-OS gap measured **0.31–0.68 GB** (MLX under-reporting), *not* the ~2x the build spec
+  warned about. Reporting the measured figure rather than the expected one.
+- **Checkpointing was added after losing a 19/20 run** to session teardown, because results were
+  only written at the end. Now every question is flushed to a `.jsonl` as it completes, with
+  `--resume`. Verified it survives a torn final line from a hard kill.
+- KV-cache arithmetic (`results/kv_math.md`) is computed from the model's own config: **56
+  KB/token**, and with GQA (4 KV heads, not 28) a reader assuming MHA would overstate KV memory
+  by **7x**. At 4k context only **2 concurrent users** fit on this machine.
+
 ## Phase 4 — Verification layer (1C)
 
 - Built `src/verify/verify.py` (claim → verdict + citation + confidence) and

@@ -7,6 +7,42 @@ claim we might otherwise be tempted to make.
 
 ---
 
+## L0 — The headline accuracy number depends heavily on which questions you ask
+
+**Measured, and the single most important caveat on every accuracy figure in this project.**
+
+| set | overall | prose | numeric | multi-doc | P50 latency |
+|---|---|---|---|---|---|
+| `gold_set.json` (development set, tuned against) | **11/20 = 0.55** | 6/8 | 4/8 | 1/4 | 99.7 s |
+| `holdout_set.json` (7 documents never inspected) | **8/9 = 0.889** | **8/8 = 1.00** | n/a | 0/1 | 29.3 s |
+
+The held-out set scores **34 points higher** than the development set. That is the opposite of
+overfitting — had the gold-set number been inflated by my having read those documents while
+debugging, held-out would have come in lower.
+
+Two things explain the gap, and both are properties of the *questions*, not of the system:
+
+1. **The gold set's numeric block is 100% FDIC.** All 8 numeric questions come from the Quarterly
+   Banking Profile, because it is the only corpus document whose stacked multi-section tables
+   survived extraction cleanly enough to key ground truth against — and it needed a dedicated
+   label-loss repair pass (L2) to get even that far. So "numeric accuracy 0.50" measures
+   performance on the corpus's *hardest* table format, not on tables generally.
+2. **Multi-doc drags both sets down** (1/4 and 0/1) and is a documented structural weakness with
+   three failed designs behind it.
+
+Strip those two and prose retrieval + generation runs at **1.00 on unseen documents**.
+
+**How to report this honestly:** quote both numbers with their provenance. "0.55" alone
+understates the system; "0.889" alone overstates it by omitting the numeric and multi-doc paths
+the held-out set could not test. Neither number is wrong; either one alone is misleading.
+
+**Why the holdout has no numeric questions — itself a finding.** Table extraction on the other
+seven documents is too corrupted to serve as ground truth: sampled cells carry row labels like
+`'Billion $53'`, `'9 Billion'`, `'2023 and 2024'` and values like `'024.'`. Writing numeric
+questions against them would have measured extraction quality, not model quality.
+
+---
+
 ## L1 — The confidence score measures auditability, not correctness
 
 **Status: open by design. Must be stated plainly in MEMO §4.**
