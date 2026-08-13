@@ -2,7 +2,7 @@
 
 Legend: `[x]` done · `[~]` in progress · `[ ]` not started · `[!]` blocked on you
 
-Last updated: Phase 5 — INT4 + held-out complete, INT8 artifact downloading.
+Last updated: CLOSEOUT COMPLETE — all 4 deliverables covered, MEMO.md written.
 
 ---
 
@@ -110,16 +110,22 @@ Last updated: Phase 5 — INT4 + held-out complete, INT8 artifact downloading.
 - [x] **HELD-OUT evaluation** — `holdout_set.json`, 9 questions, 7 documents never inspected:
       **8/9 (0.889), prose 8/8 (1.00)**. Higher than the development set, not lower — the
       opposite of overfitting. See L0 in `results/known_limitations.md`.
-- [~] **INT8** — 8-bit artifact downloading (~8 GB), then load attempt
+- [x] **INT8** — attempted for real: **loads in 10.2 s, then Metal OOM on generation**.
+      mlx-lm's own figures: 7,717 MB required vs 5,461 MB max (1.41x). Swap +2,944 MB.
+      No accuracy figures reported — it produced no tokens.
 - [x] **FP16** — ruled out by arithmetic (15.2 GB weights vs ~4.5 GB usable); will not be run
-- [ ] `results/quant_table.md` + deployment recommendation
+- [x] `results/quant_table.md` — explicit GB gap per rung, deployment recommendation
+- [x] `results/multidoc_failure_analysis.md` — all 4 failures categorised
+- [x] **Bottleneck located**: 7 of 9 failures are post-retrieval; earlier reranker
+      recommendation corrected in `results/fix_attempt_analysis.md`
 
-## Phase 6 — Memo & release `[ ] NOT STARTED`
+## Phase 6 — Memo & release `[~] MEMO DONE, RELEASE BLOCKED`
 
-- [ ] `MEMO.md` (~2 pages) — chunking, quant damage, KV math, verifier-of-verifier, AI disclosure
+- [x] `MEMO.md` — all 5 required sections + reading-the-two-numbers; every figure traced
+      to a measurement; 7 assistant errors disclosed
 - [x] KV-cache napkin math computed (`results/kv_math.md`) — feeds memo §3
 - [x] README with full run/test instructions
-- [ ] final commit + tag `stage-1`
+- [!] final commit + tag `stage-1` — **blocked: no GitHub remote configured**
 
 ## Key numbers so far
 
