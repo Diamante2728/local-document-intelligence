@@ -91,3 +91,45 @@ then revised to 12-15/20, and delivered 11/20. The error in the first projection
 "the right cell is now retrievable" as equivalent to "the right cell will be selected". N05 and
 N06 both disprove that: visibility is necessary, not sufficient.
 
+
+---
+
+## ADDENDUM — where the failures actually live (and a correction)
+
+Measured after the fix rounds, by checking for each miss whether the **correct cell/passage was
+already in the model's context** at the moment it failed.
+
+| question | correct evidence in context? | shape |
+|---|---|---|
+| N02 | **YES** — `p12_t0`, "Credit card loans" / "Percent of Loans Noncurrent" | selection failed |
+| N03 | **YES** — `p13_t0`, "Credit card loans" / "Percent of Loans Charged-Off" | selection failed |
+| N05 | **YES** — `p12_t0`, "Total loans and leases" / "Percent of Loans Noncurrent" | selection failed |
+| N08 | **YES** — `p12_t0`, "Total loans and leases" / "Loans Outstanding (in billions)" | selection failed |
+| P07 | **YES** (after fix 3) — BM25 ranks FDIC p1 first, `64.2` reaches context | extraction failed |
+| M01 | **YES** — `1.3` present in doc-filtered context | model returned `NOT_IN_CONTEXT` |
+| M02 | **YES** — `65.6` and `11.5` both present | model returned `NOT_IN_CONTEXT` |
+| M03 | **NO** — FDIC `64.2` absent from filtered context | retrieval failed |
+| H09 | **NO** — EPA `27.1` absent from filtered context | retrieval failed (+ routing) |
+
+**Seven of nine failures are post-retrieval.** The right evidence was in front of the model and
+it did not use it. Only two (M03, H09) are genuine retrieval failures, and both stem from the
+same FDIC-page-1-style chunk-reachability defect.
+
+### Correction to an earlier recommendation
+
+Earlier in this analysis I concluded that reaching higher accuracy would need "a cross-encoder
+reranker over candidate tables". **That conclusion was wrong, and this measurement is what
+disproves it.** A reranker reorders candidates that retrieval has already produced — it cannot
+help when the correct candidate is *already ranked highly and already in context*, which is the
+case in 7 of 9 failures. It would address M03 and H09 and nothing else.
+
+The bottleneck is **selection and extraction by a 7B model at INT4**, not ranking. That is a
+materially different investment: better plan-time constraints, per-document question
+decomposition (see `multidoc_failure_analysis.md`), or a larger model — none of which is a
+retrieval change, and the last of which this hardware cannot host (see `quant_table.md` §2).
+
+This also reframes the net-zero fix result. Fixes 1 and 3 both improved *retrieval*, verifiably
+so — `p12_t0` went from unretrieved to rank 1, BM25 put FDIC p1 first. They produced no score
+movement because retrieval was not the binding constraint. We were fixing the wrong layer, and
+the only reason we know that now is that we measured where the evidence was at failure time
+rather than assuming.
