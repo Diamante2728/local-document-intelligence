@@ -16,6 +16,8 @@ import re
 import time
 from pathlib import Path
 
+from ..eval_match import missing_needles
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -46,7 +48,9 @@ def grade(q, result):
     needles = q.get("answer_contains", [])
     if not needles:
         return False, "no answer_contains specified"
-    missing = [n for n in needles if n not in ans]
+    # Complete-number matching, not substring. `needle in ans` credited "1.36" for "1.3"
+    # and matched a bare "5" inside "15.2"/"45.1". See src/eval_match.py.
+    missing = missing_needles(ans, needles)
     return (not missing), ("all key figures present" if not missing
                            else f"missing {missing} in {ans[:70]!r}")
 

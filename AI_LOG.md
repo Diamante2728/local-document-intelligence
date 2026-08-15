@@ -562,3 +562,54 @@ interesting way. The retrieval failures were **caused by** the compound question
 question naming two documents produces a diluted embedding, and once filtered to one document the
 right chunk no longer ranks. One root cause, surfacing at two different layers. Recorded before
 training rather than discovered after, and it directly sharpens what 2C(iii) has to decide.
+
+### Grader scoring-validity flaw — found in Stage 2, present in Stage 1, disclosed against our own interest
+
+**What the flaw was.** Answer grading used naive substring membership (`needle in answer`). A
+needle therefore matched inside any longer number containing it:
+
+```
+needle "1.3"  matched inside  "1.36 percent"     -> a WRONG answer scored CORRECT
+needle "5"    matched inside  "15.2", "45.1", "22.5", "13.3", ...
+```
+
+**How it was found.** Not by reading the grader. The Stage 2 dependency check reported that 3 of
+26 cross-document eval questions appeared answerable from a single document. Tracing *why*
+`"1.3"` was allegedly present on an FDIC page led to `"1.36 percent"` — a substring artifact. Two
+of those three "failures" were the matcher misbehaving, not the questions. The same artifact that
+corrupted the check would corrupt real grading, and more damagingly: it can only ever turn a
+**wrong answer into a pass**, never the reverse.
+
+**Fix.** `src/eval_match.py` — needles now match only as complete numbers (not preceded or
+followed by a digit or decimal point), with comma normalisation so `12,419.3` matches `12419.3`.
+Applied globally at the single grading site rather than patched per-caller. Unit-tested on 14
+cases including every observed failure mode.
+
+**STAGE 1 IMPLICATION — stated plainly, and it cuts against us.** This flaw was present when
+Stage 1 was scored and submitted. Seven Stage 1 questions carry needles short enough to be
+affected:
+
+| set | question | needles |
+|---|---|---|
+| gold | P01 | `1.3` |
+| gold | **P05** | **`5`** |
+| gold | P08 | `68` |
+| gold | M01 | `1.3`, `5` |
+| gold | M04 | `68` |
+| holdout | H01 | `1.1`, `27.1` |
+| holdout | H03 | `73` |
+
+**P05 is the clearest concern**: its only needle is a bare `"5"`, which matches inside essentially
+any number, so its recorded pass may be a false positive. M01 shares that needle but was scored a
+miss regardless, so its verdict is unaffected.
+
+The direction matters. Because substring matching can only inflate scores, **every affected
+question is a possible false PASS and never a false FAIL.** The correction therefore moves the
+Stage 1 numbers — 11/20 gold, 8/9 held-out — in the **less flattering** direction, not the more.
+The true figures may be slightly lower than reported.
+
+**Decision: Stage 1 is not being retroactively edited.** It is submitted and graded, and quietly
+restating its numbers after the fact would be worse than disclosing the flaw. This is recorded
+here, will be disclosed on the walkthrough call, and the fixed matcher governs all Stage 2
+scoring from this point forward. Finding a bug that makes your own submitted results look better
+than they were, and saying so unprompted, is the only defensible way to handle it.

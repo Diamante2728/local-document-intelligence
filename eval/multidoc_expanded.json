@@ -15,7 +15,8 @@
    "multi-doc": 35
   },
   "scoring_note": "answer_contains lists the figures that must appear. Both/all documents' figures are required, so answering from a single source scores as a miss \u2014 which is the exact M01/M02/M03 failure mode this set is built to measure.",
-  "design_note": "REVISED after a self-check found the first draft had only 7 of 35 questions spanning two or more documents \u2014 the rest paired two facts from a single document, which does not test multi-doc reasoning at all. Rebuilt so 26 of 35 are genuinely cross-document. The remaining 9 are kept deliberately as SAME-DOCUMENT CONTROLS: if the fine-tune improves cross-document questions but not these, the gain is specific to multi-doc reasoning rather than to two-fact extraction generally. That distinction is what 2C(i) needs."
+  "design_note": "REVISED after a self-check found the first draft had only 7 of 35 questions spanning two or more documents \u2014 the rest paired two facts from a single document, which does not test multi-doc reasoning at all. Rebuilt so 26 of 35 are genuinely cross-document. The remaining 9 are kept deliberately as SAME-DOCUMENT CONTROLS: if the fine-tune improves cross-document questions but not these, the gain is specific to multi-doc reasoning rather than to two-fact extraction generally. That distinction is what 2C(i) needs.",
+  "grading_note": "Needles are matched as COMPLETE NUMBERS via src/eval_match.py, not by substring. Substring matching credited '1.36' for a '1.3' needle and matched a bare '5' inside '15.2'. That flaw was found by this set's dependency check and is fixed globally."
  },
  "questions": [
   {
@@ -44,8 +45,8 @@
    "id": "X02",
    "type": "multi-doc",
    "operation": "comparison",
-   "question": "Compare the FDIC net interest margin with the federal funds target range reported by the Federal Reserve.",
-   "expected_answer": "FDIC reports a net interest margin of 3.17 percent; the Fed reports a target range of 5-1/4 to 5-1/2 percent.",
+   "question": "Compare the FDIC net interest margin with the 12-month PCE inflation rate reported by the Federal Reserve.",
+   "expected_answer": "FDIC reports a net interest margin of 3.17 percent; the Fed reports PCE inflation of 2.4 percent over the 12 months ending in January.",
    "expected_citation": [
     {
      "doc": "fdic_quarterly_banking_profile_2024q1",
@@ -58,9 +59,10 @@
    ],
    "answer_contains": [
     "3.17",
-    "5"
+    "2.4"
    ],
-   "verification_quote": "net interest margin (NIM) declined 10 basis points to 3.17 percent | federal funds rate at 5 1/4 to 5 1/2 percent"
+   "verification_quote": "net interest margin (NIM) declined 10 basis points to 3.17 percent | PCE rose 2.4 percent over the 12 months ending in January",
+   "replacement_note": "Replaced during review. The original paired FDIC 3.17 with the Fed funds target range, whose only needle was a bare '5' - unusable, because the source writes the range with unicode fractions (5-1/4 to 5-1/2) leaving no clean numeric token, and '5' matches inside almost any number. Swapped for PCE 2.4, a distinctive token on the same page."
   },
   {
    "id": "X03",
