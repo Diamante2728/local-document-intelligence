@@ -1,0 +1,756 @@
+{
+ "_meta": {
+  "purpose": "Expanded multi-doc evaluation set for Stage 2. Exists because Stage 1's multi-doc sample (n=4 gold, n=1 held-out) is too small to read a fine-tuning effect: at n=1 a single question flipping is a 100-point swing.",
+  "status": "DRAFT \u2014 awaiting user review (Stage 2 Phase 2A Step 0 gate). No training data is generated until this is approved, because this set is the yardstick the whole fine-tune is measured against.",
+  "size_reasoning": "35 questions. Chosen so one question is worth ~2.9 points rather than 25 (n=4) or 100 (n=1), which makes a real effect distinguishable from noise, while staying small enough that every question could be hand-authored against verified source text rather than generated. 35 also gives ~8-9 per operation family, enough to break results out by operation type in 2C(i).",
+  "provenance": "Every expected figure was read from the source PDF page text (PyMuPDF) and is quoted in verification_quote. No value was taken from the SQLite store, which is the artifact under test.",
+  "freshness": "Deliberately built from facts NOT used by gold_set.json or holdout_set.json, even where the same document is reused. Document overlap is unavoidable (16-doc corpus) so freshness is enforced at the FACT level: e.g. FDIC contributes ROA 1.08% and NIM 3.17% here, never the $64.2bn net income used in gold P07/M03. See results/eval_expansion_notes.md for the full used-fact exclusion list.",
+  "operations": {
+   "comparison": "read a comparable figure from each of 2+ documents and contrast them",
+   "aggregation": "combine figures across documents into a total or joint statement",
+   "contradiction": "surface a conflict or period mismatch between documents",
+   "lookup_then_combine": "retrieve a fact from one document, use it to qualify a fact from another"
+  },
+  "counts": {
+   "multi-doc": 35
+  },
+  "scoring_note": "answer_contains lists the figures that must appear. Both/all documents' figures are required, so answering from a single source scores as a miss \u2014 which is the exact M01/M02/M03 failure mode this set is built to measure.",
+  "design_note": "REVISED after a self-check found the first draft had only 7 of 35 questions spanning two or more documents \u2014 the rest paired two facts from a single document, which does not test multi-doc reasoning at all. Rebuilt so 26 of 35 are genuinely cross-document. The remaining 9 are kept deliberately as SAME-DOCUMENT CONTROLS: if the fine-tune improves cross-document questions but not these, the gain is specific to multi-doc reasoning rather than to two-fact extraction generally. That distinction is what 2C(i) needs."
+ },
+ "questions": [
+  {
+   "id": "X01",
+   "type": "multi-doc",
+   "operation": "comparison",
+   "question": "The FDIC banking profile and the BEA GDP release both cover early 2024. What return-on-assets ratio does FDIC report, and what real GDP growth rate does BEA report?",
+   "expected_answer": "FDIC reports ROA of 1.08 percent; BEA reports real GDP growth of 1.3 percent.",
+   "expected_citation": [
+    {
+     "doc": "fdic_quarterly_banking_profile_2024q1",
+     "page": 1
+    },
+    {
+     "doc": "bea_gdp_2024q1_second_estimate",
+     "page": 1
+    }
+   ],
+   "answer_contains": [
+    "1.08",
+    "1.3"
+   ],
+   "verification_quote": "ROA of 1.08 percent | real GDP increased at an annual rate of 1.3 percent"
+  },
+  {
+   "id": "X02",
+   "type": "multi-doc",
+   "operation": "comparison",
+   "question": "Compare the FDIC net interest margin with the federal funds target range reported by the Federal Reserve.",
+   "expected_answer": "FDIC reports a net interest margin of 3.17 percent; the Fed reports a target range of 5-1/4 to 5-1/2 percent.",
+   "expected_citation": [
+    {
+     "doc": "fdic_quarterly_banking_profile_2024q1",
+     "page": 2
+    },
+    {
+     "doc": "fed_monetary_policy_report_2024_03",
+     "page": 7
+    }
+   ],
+   "answer_contains": [
+    "3.17",
+    "5"
+   ],
+   "verification_quote": "net interest margin (NIM) declined 10 basis points to 3.17 percent | federal funds rate at 5 1/4 to 5 1/2 percent"
+  },
+  {
+   "id": "X03",
+   "type": "multi-doc",
+   "operation": "comparison",
+   "question": "What rental vacancy rate does the Census housing release report, and what official poverty rate does the Census poverty report give?",
+   "expected_answer": "Rental vacancy was 6.6 percent; the official poverty rate was 11.5 percent.",
+   "expected_citation": [
+    {
+     "doc": "census_housing_vacancies",
+     "page": 1
+    },
+    {
+     "doc": "census_poverty_2022_p60_280",
+     "page": 8
+    }
+   ],
+   "answer_contains": [
+    "6.6",
+    "11.5"
+   ],
+   "verification_quote": "6.6 percent for rental housing | official poverty rate in 2022 was 11.5 percent"
+  },
+  {
+   "id": "X04",
+   "type": "multi-doc",
+   "operation": "comparison",
+   "question": "The EPA automotive report and the EIA energy outlook both bear on transport energy. What CO2 emission rate does EPA report for model year 2023, and what retail gasoline price does EIA report?",
+   "expected_answer": "EPA reports 319 g/mi; EIA reports $3.30 per gallon.",
+   "expected_citation": [
+    {
+     "doc": "epa_automotive_trends_2024_exec_summary",
+     "page": 4
+    },
+    {
+     "doc": "eia_short_term_energy_outlook_2025_05",
+     "page": 3
+    }
+   ],
+   "answer_contains": [
+    "319",
+    "3.30"
+   ],
+   "verification_quote": "319 grams per mile (g/mi) of CO2 | Retail gasoline price (dollars per gallon) $3.30"
+  },
+  {
+   "id": "X05",
+   "type": "multi-doc",
+   "operation": "comparison",
+   "question": "Compare the USDA Prices Received Index with the WASDE projection for all wheat production.",
+   "expected_answer": "The Prices Received Index was 137.7; all wheat production is projected at 1,543 million bushels.",
+   "expected_citation": [
+    {
+     "doc": "usda_agricultural_prices_2025_09",
+     "page": 1
+    },
+    {
+     "doc": "usda_wasde_2026_06",
+     "page": 1
+    }
+   ],
+   "answer_contains": [
+    "137.7",
+    "1,543"
+   ],
+   "verification_quote": "Prices Received Index ... at 137.7 | all wheat production is projected at 1,543 million bushels"
+  },
+  {
+   "id": "X06",
+   "type": "multi-doc",
+   "operation": "comparison",
+   "question": "What goods deficit does the trade release report for March, and what current-account change does the BEA international transactions release report?",
+   "expected_answer": "The goods deficit was $92.5 billion; the current-account deficit widened $15.9 billion.",
+   "expected_citation": [
+    {
+     "doc": "census_ft900_trade_2024_03",
+     "page": 1
+    },
+    {
+     "doc": "bea_international_transactions_2024q1",
+     "page": 1
+    }
+   ],
+   "answer_contains": [
+    "92.5",
+    "15.9"
+   ],
+   "verification_quote": "goods deficit of $0.8 billion to $92.5 billion | widened by $15.9 billion"
+  },
+  {
+   "id": "X07",
+   "type": "multi-doc",
+   "operation": "comparison",
+   "question": "Compare the disposable personal income increase reported by BEA with the decline in FDIC noninterest expense.",
+   "expected_answer": "DPI increased $94.0 billion; noninterest expense fell $22.5 billion.",
+   "expected_citation": [
+    {
+     "doc": "bea_personal_income_outlays_2024_04",
+     "page": 1
+    },
+    {
+     "doc": "fdic_quarterly_banking_profile_2024q1",
+     "page": 1
+    }
+   ],
+   "answer_contains": [
+    "94.0",
+    "22.5"
+   ],
+   "verification_quote": "Disposable personal income (DPI) ... increased $94.0 billion | noninterest expense (down $22.5 billion"
+  },
+  {
+   "id": "X08",
+   "type": "multi-doc",
+   "operation": "comparison",
+   "question": "What share of model year 2023 vehicles were cars according to EPA, and what U.S. crude oil production figure does EIA give?",
+   "expected_answer": "EPA reports 38 percent were cars; EIA reports 13.2 million barrels per day.",
+   "expected_citation": [
+    {
+     "doc": "epa_automotive_trends_2024_exec_summary",
+     "page": 7
+    },
+    {
+     "doc": "eia_short_term_energy_outlook_2025_05",
+     "page": 3
+    }
+   ],
+   "answer_contains": [
+    "38",
+    "13.2"
+   ],
+   "verification_quote": "38% of all new vehicles were cars | U.S. crude oil production (million barrels per day) 13.2"
+  },
+  {
+   "id": "X09",
+   "type": "multi-doc",
+   "operation": "comparison",
+   "question": "Compare the homeowner vacancy rate from the housing release with the FDIC return-on-assets ratio.",
+   "expected_answer": "Homeowner vacancy was 0.8 percent; FDIC ROA was 1.08 percent.",
+   "expected_citation": [
+    {
+     "doc": "census_housing_vacancies",
+     "page": 1
+    },
+    {
+     "doc": "fdic_quarterly_banking_profile_2024q1",
+     "page": 1
+    }
+   ],
+   "answer_contains": [
+    "0.8",
+    "1.08"
+   ],
+   "verification_quote": "0.8 percent for homeowner housing | ROA of 1.08 percent"
+  },
+  {
+   "id": "X10",
+   "type": "multi-doc",
+   "operation": "comparison",
+   "question": "What Henry Hub natural gas price does EIA report, and what Prices Paid Index does the USDA agricultural prices report give?",
+   "expected_answer": "Henry Hub gas was $2.20 per million BTU; the Prices Paid Index was 152.0.",
+   "expected_citation": [
+    {
+     "doc": "eia_short_term_energy_outlook_2025_05",
+     "page": 3
+    },
+    {
+     "doc": "usda_agricultural_prices_2025_09",
+     "page": 1
+    }
+   ],
+   "answer_contains": [
+    "2.20",
+    "152.0"
+   ],
+   "verification_quote": "Natural gas price at Henry Hub ... $2.20 | Prices Paid Index ... at 152.0"
+  },
+  {
+   "id": "X11",
+   "type": "multi-doc",
+   "operation": "comparison",
+   "question": "Compare the number of FDIC-insured institutions with the advance estimate of real GDP growth from BEA.",
+   "expected_answer": "FDIC covers 4,568 institutions; BEA's advance estimate of real GDP growth was 1.6 percent.",
+   "expected_citation": [
+    {
+     "doc": "fdic_quarterly_banking_profile_2024q1",
+     "page": 1
+    },
+    {
+     "doc": "bea_gdp_2024q1_second_estimate",
+     "page": 1
+    }
+   ],
+   "answer_contains": [
+    "4,568",
+    "1.6"
+   ],
+   "verification_quote": "4,568 FDIC-insured commercial banks | In the advance estimate, the increase in real GDP was 1.6 percent."
+  },
+  {
+   "id": "X12",
+   "type": "multi-doc",
+   "operation": "comparison",
+   "question": "What services surplus does the trade release report, and what personal income increase does BEA report?",
+   "expected_answer": "The services surplus was $23.1 billion; personal income increased $114.1 billion.",
+   "expected_citation": [
+    {
+     "doc": "census_ft900_trade_2024_03",
+     "page": 1
+    },
+    {
+     "doc": "bea_personal_income_outlays_2024_04",
+     "page": 1
+    }
+   ],
+   "answer_contains": [
+    "23.1",
+    "114.1"
+   ],
+   "verification_quote": "services surplus of $0.9 billion to $23.1 billion | Personal income increased $114.1 billion"
+  },
+  {
+   "id": "X13",
+   "type": "multi-doc",
+   "operation": "aggregation",
+   "question": "Combining the EPA and EIA reports, state the model year 2023 CO2 emission rate and the U.S. crude oil production figure.",
+   "expected_answer": "319 g/mi of CO2 and 13.2 million barrels per day.",
+   "expected_citation": [
+    {
+     "doc": "epa_automotive_trends_2024_exec_summary",
+     "page": 4
+    },
+    {
+     "doc": "eia_short_term_energy_outlook_2025_05",
+     "page": 3
+    }
+   ],
+   "answer_contains": [
+    "319",
+    "13.2"
+   ],
+   "verification_quote": "319 grams per mile (g/mi) | production (million barrels per day) 13.2"
+  },
+  {
+   "id": "X14",
+   "type": "multi-doc",
+   "operation": "aggregation",
+   "question": "Using the FDIC and housing releases, state the FDIC net interest margin and the national homeownership rate.",
+   "expected_answer": "NIM was 3.17 percent; homeownership was 65.6 percent.",
+   "expected_citation": [
+    {
+     "doc": "fdic_quarterly_banking_profile_2024q1",
+     "page": 2
+    },
+    {
+     "doc": "census_housing_vacancies",
+     "page": 1
+    }
+   ],
+   "answer_contains": [
+    "3.17",
+    "65.6"
+   ],
+   "verification_quote": "net interest margin (NIM) declined 10 basis points to 3.17 percent | homeownership rate of 65.6 percent"
+  },
+  {
+   "id": "X15",
+   "type": "multi-doc",
+   "operation": "aggregation",
+   "question": "From the WASDE and agricultural prices reports, state projected wheat ending stocks and the Prices Received Index.",
+   "expected_answer": "Ending stocks 744 million bushels; Prices Received Index 137.7.",
+   "expected_citation": [
+    {
+     "doc": "usda_wasde_2026_06",
+     "page": 1
+    },
+    {
+     "doc": "usda_agricultural_prices_2025_09",
+     "page": 1
+    }
+   ],
+   "answer_contains": [
+    "744",
+    "137.7"
+   ],
+   "verification_quote": "ending stocks are reduced 18 million bushels to 744 million | Prices Received Index ... at 137.7"
+  },
+  {
+   "id": "X16",
+   "type": "multi-doc",
+   "operation": "aggregation",
+   "question": "Using the poverty report and the personal income release, state the number of people in poverty and the disposable personal income increase.",
+   "expected_answer": "37.9 million people in poverty; DPI increased $94.0 billion.",
+   "expected_citation": [
+    {
+     "doc": "census_poverty_2022_p60_280",
+     "page": 8
+    },
+    {
+     "doc": "bea_personal_income_outlays_2024_04",
+     "page": 1
+    }
+   ],
+   "answer_contains": [
+    "37.9",
+    "94.0"
+   ],
+   "verification_quote": "37.9 million people in poverty | Disposable personal income (DPI) ... increased $94.0 billion"
+  },
+  {
+   "id": "X17",
+   "type": "multi-doc",
+   "operation": "aggregation",
+   "question": "From the trade release and the GDP release, state March total exports and the second-estimate real GDP growth rate.",
+   "expected_answer": "Exports were $257.6 billion; real GDP grew 1.3 percent.",
+   "expected_citation": [
+    {
+     "doc": "census_ft900_trade_2024_03",
+     "page": 1
+    },
+    {
+     "doc": "bea_gdp_2024q1_second_estimate",
+     "page": 1
+    }
+   ],
+   "answer_contains": [
+    "257.6",
+    "1.3"
+   ],
+   "verification_quote": "March exports were $257.6 billion | increased at an annual rate of 1.3 percent"
+  },
+  {
+   "id": "X18",
+   "type": "multi-doc",
+   "operation": "aggregation",
+   "question": "Using the EPA report and the agricultural prices report, state the record-high real-world fuel economy and the Prices Paid Index.",
+   "expected_answer": "27.1 mpg and a Prices Paid Index of 152.0.",
+   "expected_citation": [
+    {
+     "doc": "epa_automotive_trends_2024_exec_summary",
+     "page": 4
+    },
+    {
+     "doc": "usda_agricultural_prices_2025_09",
+     "page": 1
+    }
+   ],
+   "answer_contains": [
+    "27.1",
+    "152.0"
+   ],
+   "verification_quote": "record high 27.1mpg | Prices Paid Index ... at 152.0"
+  },
+  {
+   "id": "X19",
+   "type": "multi-doc",
+   "operation": "lookup_then_combine",
+   "question": "The FDIC report gives an aggregate net income. Using the GDP release for context, state that net income and the real GDP growth rate for the same quarter.",
+   "expected_answer": "Net income $64.2 billion; real GDP growth 1.3 percent.",
+   "expected_citation": [
+    {
+     "doc": "fdic_quarterly_banking_profile_2024q1",
+     "page": 1
+    },
+    {
+     "doc": "bea_gdp_2024q1_second_estimate",
+     "page": 1
+    }
+   ],
+   "answer_contains": [
+    "64.2",
+    "1.3"
+   ],
+   "verification_quote": "to $64.2 billion | at an annual rate of 1.3 percent"
+  },
+  {
+   "id": "X20",
+   "type": "multi-doc",
+   "operation": "lookup_then_combine",
+   "question": "Find the wheat export figure in WASDE and the goods and services deficit in the trade release.",
+   "expected_answer": "Wheat exports 775 million bushels; goods and services deficit $69.4 billion.",
+   "expected_citation": [
+    {
+     "doc": "usda_wasde_2026_06",
+     "page": 1
+    },
+    {
+     "doc": "census_ft900_trade_2024_03",
+     "page": 1
+    }
+   ],
+   "answer_contains": [
+    "775",
+    "69.4"
+   ],
+   "verification_quote": "Exports are unchanged at 775 million bushels | deficit was $69.4 billion in March"
+  },
+  {
+   "id": "X21",
+   "type": "multi-doc",
+   "operation": "lookup_then_combine",
+   "question": "State the FDIC provision expense decline and the Census rental vacancy rate.",
+   "expected_answer": "Provision expenses fell $4.3 billion; rental vacancy was 6.6 percent.",
+   "expected_citation": [
+    {
+     "doc": "fdic_quarterly_banking_profile_2024q1",
+     "page": 1
+    },
+    {
+     "doc": "census_housing_vacancies",
+     "page": 1
+    }
+   ],
+   "answer_contains": [
+    "4.3",
+    "6.6"
+   ],
+   "verification_quote": "lower provision expenses (down $4.3 billion | 6.6 percent for rental housing"
+  },
+  {
+   "id": "X22",
+   "type": "multi-doc",
+   "operation": "lookup_then_combine",
+   "question": "Using the EIA outlook and the FDIC profile, state the retail gasoline price and the banking industry return-on-assets ratio.",
+   "expected_answer": "Gasoline $3.30 per gallon; ROA 1.08 percent.",
+   "expected_citation": [
+    {
+     "doc": "eia_short_term_energy_outlook_2025_05",
+     "page": 3
+    },
+    {
+     "doc": "fdic_quarterly_banking_profile_2024q1",
+     "page": 1
+    }
+   ],
+   "answer_contains": [
+    "3.30",
+    "1.08"
+   ],
+   "verification_quote": "Retail gasoline price (dollars per gallon) $3.30 | ROA of 1.08 percent"
+  },
+  {
+   "id": "X23",
+   "type": "multi-doc",
+   "operation": "lookup_then_combine",
+   "question": "State the share of model year 2023 vehicles that were trucks, and the official poverty rate.",
+   "expected_answer": "62 percent were trucks; the official poverty rate was 11.5 percent.",
+   "expected_citation": [
+    {
+     "doc": "epa_automotive_trends_2024_exec_summary",
+     "page": 7
+    },
+    {
+     "doc": "census_poverty_2022_p60_280",
+     "page": 8
+    }
+   ],
+   "answer_contains": [
+    "62",
+    "11.5"
+   ],
+   "verification_quote": "62% of all new vehicles were trucks | official poverty rate in 2022 was 11.5 percent"
+  },
+  {
+   "id": "X24",
+   "type": "multi-doc",
+   "operation": "contradiction",
+   "question": "The FDIC report describes first quarter 2024 and the WASDE report describes the 2026/27 marketing year. Do these cover the same period, and what headline figure does each give?",
+   "expected_answer": "No, different periods. FDIC reports ROA 1.08 percent for Q1 2024; WASDE projects 1,543 million bushels of wheat production for a later marketing year.",
+   "expected_citation": [
+    {
+     "doc": "fdic_quarterly_banking_profile_2024q1",
+     "page": 1
+    },
+    {
+     "doc": "usda_wasde_2026_06",
+     "page": 1
+    }
+   ],
+   "answer_contains": [
+    "1.08",
+    "1,543"
+   ],
+   "verification_quote": "ROA of 1.08 percent in first quarter 2024 | all wheat production is projected at 1,543 million bushels"
+  },
+  {
+   "id": "X25",
+   "type": "multi-doc",
+   "operation": "contradiction",
+   "question": "The Census poverty report covers 2022 and the housing release covers first quarter 2024. State each headline rate and note they are not the same period.",
+   "expected_answer": "Poverty rate 11.5 percent for 2022; homeownership 65.6 percent for Q1 2024 \u2014 different reference periods.",
+   "expected_citation": [
+    {
+     "doc": "census_poverty_2022_p60_280",
+     "page": 8
+    },
+    {
+     "doc": "census_housing_vacancies",
+     "page": 1
+    }
+   ],
+   "answer_contains": [
+    "11.5",
+    "65.6"
+   ],
+   "verification_quote": "official poverty rate in 2022 was 11.5 percent | homeownership rate of 65.6 percent"
+  },
+  {
+   "id": "X26",
+   "type": "multi-doc",
+   "operation": "contradiction",
+   "question": "The EIA outlook and the EPA report were published for different years. State the EIA crude production figure and the EPA CO2 rate, noting they are not directly comparable.",
+   "expected_answer": "EIA reports 13.2 million barrels per day; EPA reports 319 g/mi for model year 2023 \u2014 different vintages.",
+   "expected_citation": [
+    {
+     "doc": "eia_short_term_energy_outlook_2025_05",
+     "page": 3
+    },
+    {
+     "doc": "epa_automotive_trends_2024_exec_summary",
+     "page": 4
+    }
+   ],
+   "answer_contains": [
+    "13.2",
+    "319"
+   ],
+   "verification_quote": "production (million barrels per day) 13.2 | 319 grams per mile (g/mi)"
+  },
+  {
+   "id": "X27",
+   "type": "multi-doc",
+   "operation": "comparison",
+   "question": "Compare the FDIC return-on-assets ratio for first quarter 2024 with the same ratio a year earlier.",
+   "expected_answer": "1.08 percent in Q1 2024, down from 1.36 percent in Q1 2023.",
+   "expected_citation": [
+    {
+     "doc": "fdic_quarterly_banking_profile_2024q1",
+     "page": 1
+    }
+   ],
+   "answer_contains": [
+    "1.08",
+    "1.36"
+   ],
+   "verification_quote": "ROA of 1.08 percent ... down from 1.36 percent in first quarter 2023"
+  },
+  {
+   "id": "X28",
+   "type": "multi-doc",
+   "operation": "comparison",
+   "question": "What were the national rental and homeowner vacancy rates in the first quarter of 2024?",
+   "expected_answer": "Rental 6.6 percent; homeowner 0.8 percent.",
+   "expected_citation": [
+    {
+     "doc": "census_housing_vacancies",
+     "page": 1
+    }
+   ],
+   "answer_contains": [
+    "6.6",
+    "0.8"
+   ],
+   "verification_quote": "6.6 percent for rental housing and 0.8 percent for homeowner housing"
+  },
+  {
+   "id": "X29",
+   "type": "multi-doc",
+   "operation": "aggregation",
+   "question": "State the goods deficit and services surplus reported for March.",
+   "expected_answer": "Goods deficit $92.5 billion; services surplus $23.1 billion.",
+   "expected_citation": [
+    {
+     "doc": "census_ft900_trade_2024_03",
+     "page": 1
+    }
+   ],
+   "answer_contains": [
+    "92.5",
+    "23.1"
+   ],
+   "verification_quote": "goods deficit of $0.8 billion to $92.5 billion and an increase in the services surplus of $0.9 billion to $23.1 billion"
+  },
+  {
+   "id": "X30",
+   "type": "multi-doc",
+   "operation": "contradiction",
+   "question": "The FDIC report gives an ROA for first quarter 2024 and for fourth quarter 2023. Do they agree, and what are they?",
+   "expected_answer": "They differ: 1.08 percent versus 0.61 percent.",
+   "expected_citation": [
+    {
+     "doc": "fdic_quarterly_banking_profile_2024q1",
+     "page": 1
+    }
+   ],
+   "answer_contains": [
+    "1.08",
+    "0.61"
+   ],
+   "verification_quote": "ROA of 1.08 percent in first quarter 2024, up from 0.61 percent in fourth quarter 2023"
+  },
+  {
+   "id": "X31",
+   "type": "multi-doc",
+   "operation": "comparison",
+   "question": "Compare projected all wheat production with projected wheat exports in the WASDE report.",
+   "expected_answer": "Production 1,543 million bushels; exports 775 million bushels.",
+   "expected_citation": [
+    {
+     "doc": "usda_wasde_2026_06",
+     "page": 1
+    }
+   ],
+   "answer_contains": [
+    "1,543",
+    "775"
+   ],
+   "verification_quote": "all wheat production is projected at 1,543 million bushels | Exports are unchanged at 775 million bushels"
+  },
+  {
+   "id": "X32",
+   "type": "multi-doc",
+   "operation": "aggregation",
+   "question": "State the Prices Received Index level and its change from a year earlier.",
+   "expected_answer": "137.7, up 7.2 percent from a year earlier.",
+   "expected_citation": [
+    {
+     "doc": "usda_agricultural_prices_2025_09",
+     "page": 1
+    }
+   ],
+   "answer_contains": [
+    "137.7",
+    "7.2"
+   ],
+   "verification_quote": "at 137.7, increased 1.0 percent from July and 7.2 percent from"
+  },
+  {
+   "id": "X33",
+   "type": "multi-doc",
+   "operation": "lookup_then_combine",
+   "question": "State the number of FDIC-insured institutions and the aggregate net income they reported.",
+   "expected_answer": "4,568 institutions; $64.2 billion net income.",
+   "expected_citation": [
+    {
+     "doc": "fdic_quarterly_banking_profile_2024q1",
+     "page": 1
+    }
+   ],
+   "answer_contains": [
+    "4,568",
+    "64.2"
+   ],
+   "verification_quote": "net income for the 4,568 FDIC-insured commercial banks ... to $64.2 billion"
+  },
+  {
+   "id": "X34",
+   "type": "multi-doc",
+   "operation": "comparison",
+   "question": "Compare the EPA model year 2023 CO2 emission rate with the improvement over the prior year.",
+   "expected_answer": "319 g/mi, an 18 g/mi improvement.",
+   "expected_citation": [
+    {
+     "doc": "epa_automotive_trends_2024_exec_summary",
+     "page": 4
+    }
+   ],
+   "answer_contains": [
+    "319",
+    "18"
+   ],
+   "verification_quote": "produced 319 grams per mile (g/mi) of CO2, which is 18 g/mi less"
+  },
+  {
+   "id": "X35",
+   "type": "multi-doc",
+   "operation": "contradiction",
+   "question": "The EIA table lists U.S. crude oil production for consecutive years. Are the values identical, and what are they?",
+   "expected_answer": "No: 13.2 then 13.4 million barrels per day.",
+   "expected_citation": [
+    {
+     "doc": "eia_short_term_energy_outlook_2025_05",
+     "page": 3
+    }
+   ],
+   "answer_contains": [
+    "13.2",
+    "13.4"
+   ],
+   "verification_quote": "U.S. crude oil production (million barrels per day) 13.2 13.4 13.5"
+  }
+ ]
+}

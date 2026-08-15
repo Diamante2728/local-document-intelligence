@@ -18,3 +18,5 @@ numpy==2.4.6
 # numeric answers "in Python/pandas". It is deliberately NOT here: the numeric path queries
 # SQLite directly and operates on individual cells, so pandas was never imported. Shipping an
 # unused dependency in a reproducibility-critical requirements file is worse than omitting it.
+
+pyarrow==25.0.1   # Stage 2: read ARC parquet for the 2C regression slice
