@@ -3,6 +3,27 @@
 Running log of what the coding assistant (Claude Code) did each phase, and anything it got
 wrong that the user corrected. Feeds the AI-disclosure section of `MEMO.md`.
 
+---
+
+## ⚠ CORRECTIONS TO CLAIMS ALREADY REPORTED
+
+Claims stated to the user that later turned out to be **wrong**, listed here rather than only in
+the phase logs so they cannot be missed. Each is expanded in place below.
+
+| # | claim as originally reported | what was actually true | found by |
+|---|---|---|---|
+| 1 | Fix 1's new matcher "can **only inflate**, never deflate" a score | True of the substring matcher it *replaced*; **false of the replacement**, which scores a correct answer as a MISS whenever the figure ends a sentence (`"The rate was 1.3."` vs needle `1.3`). The grader has now produced measurement error in **both** directions. | QC on the first training batch, not by re-reading the matcher — [detail](#a-false-negative-in-the-matcher-i-shipped-as-fix-1-self-caught-and-it-corrects-something-i-told-the-user) |
+| 2 | FDIC's Noncurrent section was "silently dropped" by extraction | Section was present; the real mechanism was **vacant-label rows** (value present, label dropped). `p12_t0 r17c1 = 0.6` was there all along. | the user corrected me |
+| 3 | A reranker was the right next fix | Measured that 7 of 9 failures were **post-retrieval**, so a reranker could fix at most 2. I disproved my own recommendation. | my own measurement |
+| 4 | Multi-doc design 3 was "a failure" | Declared from **one** data point; M04 later passed via that exact path. Multi-doc is 1/4, not 0/4. | later evidence |
+| 5 | Four fixes would take the gold set to 17–18/20 (later 12–15/20) | Delivered **11/20** — net zero. Over-confident inference from partial evidence. | the measurement itself |
+
+**Item 1 is the one that most affects reported numbers** and is going on the Sunday call: Stage 1's
+11/20 and 8/9 were produced by a grader that has since been shown wrong twice, so those figures
+carry that caveat rather than standing as clean results.
+
+---
+
 ## Phase 0 — Setup
 
 - Environment check: confirmed hardware is a MacBook Air, Apple M1, 8GB unified memory —

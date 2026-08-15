@@ -1,0 +1,13 @@
+Loading pretrained model
+Fetching 9 files:   0%|          | 0/9 [00:00<?, ?it/s]Fetching 9 files: 100%|██████████| 9/9 [00:00<00:00, 3714.70it/s]
+Loading datasets
+Training
+Trainable parameters: 0.216% (6.652M/3085.939M)
+Starting training..., iters: 240
+Calculating loss...:   0%|          | 0/8 [00:00<?, ?it/s]Calculating loss...:  12%|█▎        | 1/8 [00:03<00:21,  3.13s/it]Calculating loss...:  25%|██▌       | 2/8 [00:07<00:24,  4.06s/it]Calculating loss...:  38%|███▊      | 3/8 [00:12<00:21,  4.30s/it]Calculating loss...:  50%|█████     | 4/8 [00:16<00:16,  4.17s/it]Calculating loss...:  62%|██████▎   | 5/8 [00:21<00:14,  4.67s/it]Calculating loss...:  75%|███████▌  | 6/8 [00:26<00:09,  4.69s/it]Calculating loss...:  88%|████████▊ | 7/8 [00:31<00:04,  4.88s/it]Calculating loss...: 100%|██████████| 8/8 [00:34<00:00,  4.11s/it]Calculating loss...: 100%|██████████| 8/8 [00:34<00:00,  4.30s/it]
+Iter 1: Val loss 4.106, Val took 34.442s
+Iter 5: Train loss 4.989, Learning Rate 1.000e-04, It/sec 0.089, Tokens/sec 1.989, Trained Tokens 112, Peak mem 4.223 GB
+Iter 10: Train loss 4.192, Learning Rate 1.000e-04, It/sec 0.096, Tokens/sec 2.750, Trained Tokens 255, Peak mem 4.223 GB
+Iter 15: Train loss 2.839, Learning Rate 1.000e-04, It/sec 0.092, Tokens/sec 2.146, Trained Tokens 372, Peak mem 4.377 GB
+/Users/mangilipallinagaraj/anaconda3/envs/doc-intel/lib/python3.11/multiprocessing/resource_tracker.py:254: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '

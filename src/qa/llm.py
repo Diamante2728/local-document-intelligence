@@ -14,15 +14,25 @@ os.environ.setdefault("HF_HUB_OFFLINE", "1")
 
 MODEL_ID = "mlx-community/Qwen2.5-7B-Instruct-4bit"
 
+# Stage 2: path to a LoRA adapter directory to fuse on load, or None for the base model.
+# Set by the 2C comparison harness to switch arms without reloading the module. Keyed into the
+# cache below so switching arms cannot silently reuse the previously loaded weights — an arm that
+# reports the wrong model's numbers would invalidate the entire before/after.
+ADAPTER_PATH = None
+
 _model = None
 _tokenizer = None
+_loaded_key = None
 
 
-def get_llm(model_id: str = MODEL_ID):
-    global _model, _tokenizer
-    if _model is None:
+def get_llm(model_id: str = MODEL_ID, adapter_path: str = None):
+    global _model, _tokenizer, _loaded_key
+    adapter = adapter_path if adapter_path is not None else ADAPTER_PATH
+    key = (model_id, adapter)
+    if _model is None or _loaded_key != key:
         from mlx_lm import load
-        _model, _tokenizer = load(model_id)
+        _model, _tokenizer = load(model_id, adapter_path=adapter) if adapter else load(model_id)
+        _loaded_key = key
     return _model, _tokenizer
 
 

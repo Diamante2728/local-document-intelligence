@@ -26,8 +26,32 @@ from pathlib import Path
 from ..eval_match import matches_needle
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-MAX_CHARS = 5200          # ~1300 tokens, under the 2048 seq budget with headroom
 JACCARD_THRESHOLD = 0.60
+
+# Sequence budget, measured in REAL TOKENS, not characters.
+#
+# The first version used MAX_CHARS = 5200 as a proxy for "about 2048 tokens", assuming ~2.5
+# chars/token. On this corpus the true ratio is ~1.33 chars/token — dense numerals, currency
+# symbols and table punctuation tokenize far more finely than prose. The proxy therefore passed
+# examples whose PROMPT ALONE exceeded 2048 tokens.
+#
+# Under `--mask-prompt` only assistant tokens contribute to the loss, and mlx_lm truncates from
+# the END. So for those examples every target token was cut, leaving zero unmasked tokens and a
+# 0/0 loss -> NaN. Verified: a batch made only of such examples drives all 56 adapter tensors to
+# NaN. A proxy for the quantity that actually matters is not a check; measure the real thing.
+MAX_SEQ_TOKENS = 2048
+_TOKENIZER = None
+
+
+def _tokenizer():
+    global _TOKENIZER
+    if _TOKENIZER is None:
+        from mlx_lm import load
+        _, _TOKENIZER = load(BASE_MODEL)
+    return _TOKENIZER
+
+
+BASE_MODEL = "mlx-community/Qwen2.5-3B-Instruct-4bit"
 
 
 def excerpt_body(e):
@@ -78,8 +102,19 @@ def check(ex, evalqs):
     context = user.split("\n\nQuestion:")[0]
     question = meta["question"]
 
-    if len(user) > MAX_CHARS:
-        fails.append(("too_long", f"{len(user)} chars > {MAX_CHARS}"))
+    # Token budget, measured with the real tokenizer. Two distinct failures:
+    #   prompt >= budget      -> every target token truncated away -> 0/0 loss -> NaN
+    #   prompt+target > budget -> target partially cut -> model trained on a half-written answer
+    tok = _tokenizer()
+    n_prompt = len(tok.apply_chat_template(ex["messages"][:2], tokenize=True,
+                                           add_generation_prompt=True))
+    n_full = len(tok.apply_chat_template(ex["messages"], tokenize=True))
+    if n_prompt >= MAX_SEQ_TOKENS:
+        fails.append(("target_truncated_to_zero",
+                      f"prompt {n_prompt} tok >= budget {MAX_SEQ_TOKENS}: NaN loss"))
+    elif n_full > MAX_SEQ_TOKENS:
+        fails.append(("target_partly_truncated",
+                      f"full {n_full} tok > budget {MAX_SEQ_TOKENS}"))
 
     if "the reported figure" in question:
         fails.append(("degenerate_topic", "topic extraction produced a placeholder"))
@@ -131,7 +166,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--inp", default="data/train_multidoc.raw.jsonl")
     ap.add_argument("--out", default="data/train_multidoc.jsonl")
-    ap.add_argument("--report", default="data/qc_report.md")
+    ap.add_argument("--report", default="data/qc_summary.md",
+                    help="auto-generated stats; the narrative analysis lives in "
+                         "data/qc_report.md and is NOT overwritten by this script")
     args = ap.parse_args()
 
     raw = [json.loads(l) for l in open(REPO_ROOT / args.inp) if l.strip()]
