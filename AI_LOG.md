@@ -488,3 +488,77 @@ diagnosis would have sent the fix in the wrong direction.
   `101.8 / 110.1 / **106.2**` and hides `10` / `6.2`. So the pass did not just prevent a wrong
   answer, it restored the right one. Unit-tested against negative cases so genuine text cells
   ("Total loans", "All Other", "Q1") are untouched.
+
+---
+
+# STAGE 2 — Improve the Model
+
+## Phase 2A Step 0 — expanded multi-doc eval set
+
+- Built `eval/multidoc_expanded.json`, 35 hand-authored multi-doc questions, because Stage 1's
+  multi-doc sample cannot measure a fine-tuning effect: n=4 gold means one question is worth 25
+  points, n=1 held-out means one question is worth 100. Generating 500 training examples to move
+  an unreadable metric would have been wasted effort.
+- Setup pulled forward per the brief so nothing blocks at 11pm: Qwen2.5-3B-Instruct-4bit (1.6GB),
+  ARC-Challenge/Easy parquet (1,172 test questions), `pyarrow` pinned.
+
+### The composition mistake — caught by self-check, before review
+
+**What I built first:** 35 questions that all *looked* like multi-doc questions. They were phrased
+as comparisons ("Compare X with Y", "The report gives A and B — state both"), they had multiple
+`expected_citation` entries, and every expected figure verified against source. On a read-through
+they passed.
+
+**What was actually wrong:** only **7 of 35 spanned two or more distinct documents.** The other 28
+paired two facts drawn from the *same* document — often two figures from the same paragraph. Those
+are two-fact extraction questions wearing multi-doc clothing. They do not require combining
+information across sources, which is the entire capability under test.
+
+**How I caught it:** not by re-reading the questions, which is what had already failed. I ran a
+composition check over my own output — counting `len({c['doc'] for c in q['expected_citation']})
+>= 2` per question — and got 7/35. The mechanism that made this invisible to review is that
+multiple `expected_citation` entries look correct at a glance whether or not the `doc` values
+inside them differ; the defect lives in a field comparison, not in the prose.
+
+**Why it mattered:** this set is the yardstick the entire fine-tune is measured against. Had it
+shipped, 2C(i)'s before/after would have been measuring two-fact extraction and reporting it as
+multi-doc reasoning. A fine-tune could have "succeeded" on a capability it never touched, or
+failed on one it never tested — and either result would have been reported with a straight face.
+Worse, the eval was authored *by me* and reviewed *by me*, so the same blind spot sat on both
+sides of the check.
+
+**Fix:** rebuilt to **26 cross-document + 9 same-document controls**. The controls are deliberate,
+not leftovers: if the fine-tune lifts cross-document questions but leaves controls flat, the gain
+is specific to multi-document reasoning rather than to two-fact extraction generally. Without
+controls those two explanations are indistinguishable.
+
+**Generalisable lesson, which is why this is worth the space:** a check that re-reads the artifact
+cannot catch a defect that is invisible in the artifact's surface form. Structural properties need
+structural checks — count the thing, don't eyeball it. The same pattern produced Stage 1's most
+valuable findings (counting where evidence was at failure time, rather than assuming retrieval was
+the problem).
+
+### Contamination control
+Enforced at the **fact** level rather than the document level, because document reuse is
+unavoidable in a 16-document corpus but figure reuse is not. Text 5-gram Jaccard vs all 29
+existing eval questions peaked at **0.143** against a 0.60 threshold (0 above). Where a figure
+recurs it is always paired with a fresh figure from a different document, so no item is answerable
+from memory of an earlier one. Ground truth verified: all 35 questions had every expected figure
+confirmed present in the text of its own cited source page.
+
+### A measurement that changed the plan
+While writing up the pre-registered caveat I tested whether **query decomposition** rescues the two
+failures I had classified as out of scope for fine-tuning. It does — 2 of 2:
+
+```
+case         compound-question   decomposed   verdict
+M03-FDIC     not retrieved       retrieved    DECOMP FIXES IT
+H09-EPA      not retrieved       retrieved    DECOMP FIXES IT
+M01-BEA      retrieved           retrieved    (its failure was reasoning, as diagnosed)
+```
+
+So my "half of multi-doc is structurally out of scope" framing was too pessimistic in an
+interesting way. The retrieval failures were **caused by** the compound question shape — a 40-word
+question naming two documents produces a diluted embedding, and once filtered to one document the
+right chunk no longer ranks. One root cause, surfacing at two different layers. Recorded before
+training rather than discovered after, and it directly sharpens what 2C(iii) has to decide.
