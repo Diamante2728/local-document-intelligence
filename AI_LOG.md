@@ -613,3 +613,82 @@ restating its numbers after the fact would be worse than disclosing the flaw. Th
 here, will be disclosed on the walkthrough call, and the fixed matcher governs all Stage 2
 scoring from this point forward. Finding a bug that makes your own submitted results look better
 than they were, and saying so unprompted, is the only defensible way to handle it.
+
+---
+
+## Stage 2, Phase 2A Step 2 — training data generation
+
+### A false-negative in the matcher I shipped as Fix 1 (self-caught, and it corrects something I told the user)
+
+Fix 1 replaced substring needle matching with complete-number matching. When I reported it I
+said the change could **"only inflate, never deflate"** a score. That was true of the substring
+matcher being replaced. It was **not** true of my replacement.
+
+The boundaries `(?<![\d.])` / `(?![\d.])` reject any adjacent period — including a sentence-final
+full stop:
+
+```
+matches_needle("The rate was 1.3.", "1.3")  -> False    # correct answer scored as a MISS
+```
+
+So the matcher I shipped introduces **false negatives**: a correct answer is marked wrong whenever
+the figure lands at the end of a sentence, which is exactly where answers put figures.
+
+**How it surfaced.** Not by reading the code. QC on the first training batch rejected 168 examples
+as "answer text is missing a figure the template guarantees is there". The data was fine; the
+matcher was wrong. A defect in a checker is invisible to a re-read of the checker — it only
+appears when something independent disagrees with it. Same lesson as Stage 1's L2/L3, now applied
+to my own verification tooling rather than the pipeline.
+
+**Fix.** Boundaries now reject only a real numeric continuation: an adjacent digit, or a period
+followed by a digit. Unit tests 14 -> 22 cases, six of them sentence-final regressions. All three
+eval-set checks re-run under the corrected matcher; conclusions unchanged (26/26, 35/35, 0 leaks).
+
+**Consequence for the Stage 1 disclosure.** The disclosure already recorded stands, but its framing
+needs one correction on the call: the *substring* bug inflated only. My *replacement* could deflate.
+Both directions of error have now existed in this grader, and the honest statement is that the
+grader itself has been a source of measurement error twice — which is an argument for reporting
+Stage 1's numbers with that caveat attached rather than as clean figures.
+
+`src/eval_checks.py` was promoted from an ad-hoc heredoc to a committed script, because it has
+gated a go/no-go decision twice and must be re-runnable whenever the matcher changes.
+
+### Three generator defects QC caught, fixed at source
+
+1. **Topic extraction returned a placeholder instead of failing** — produced questions reading
+   "state the reported figure and the reported figure". 325 rejections.
+2. **Years used as answer figures.** `2025` is not a measurement; it recurs on nearly every page so
+   it can never be attributed to one excerpt. 151 rejections. **Same bug class as the Stage 1
+   router defect**, where a bare `\d` cue fired on every year — I reintroduced a pattern I had
+   already been burned by once.
+3. **Citation headers matched as document text.** Doc_ids containing digits
+   (`oecd_economic_outlook_116_annex`) made the figure `116` "appear" in every OECD excerpt via its
+   label. Grounding must mean present in the text, never in the label.
+
+### A methodological problem I created by fixing those, and how I handled it
+
+Fixing the generator moved every check upstream, so the QC rejection rate fell to 0.1%. A gate that
+rejects nothing is indistinguishable from a gate that checks nothing — I had accidentally destroyed
+my own evidence.
+
+Rather than assert the gate still works, I added `--no-prefilter` to disable the generator's guards
+and ran the **same unmodified QC** against an unguarded batch: **78.4% rejected** (549 of 700), vs
+0.1% on the clean batch. Both numbers are reported. Either alone would mislead.
+
+### Deliberate design decision: ~24% of examples are genuine negatives
+
+Training only on "answer the half you can" would teach the model that `NOT_IN_CONTEXT` is always
+wrong. Stage 1's abstention behaviour is load-bearing — the verification layer and the confidence
+signal both depend on it — and destroying abstention to fix multi-doc would trade one failure class
+for the confidently-wrong-answer class that Stage 1 spent its entire fix budget eliminating.
+QC therefore also verifies that each negative's context genuinely lacks both asked-about figures;
+43 examples failed that check in the ablation and would have taught the model to refuse questions
+it could answer.
+
+### Stated limit on diversity
+
+13 template skeletons bound the *syntactic* variety, even though all 699 questions are textually
+distinct (mean pairwise 5-gram Jaccard 0.009) because their subject matter is drawn from the real
+corpus. A model could overfit the skeletons rather than the task. The eval set is hand-authored and
+shares none of these templates, so that failure mode would show up as a flat eval result — it is
+detectable, not hidden.
