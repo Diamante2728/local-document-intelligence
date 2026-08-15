@@ -175,3 +175,33 @@ one level up: I used a **derived quantity** (epochs) that I had computed from an
 framework's semantics, and never checked the assumption against the source. In both cases the
 instrument read "fine" while the thing it stood for was broken. The check that caught both was the
 same primitive one — *look at a raw counter and ask whether its magnitude is physically plausible*.
+
+---
+
+## Stated limitation — the validation curve cannot resolve small changes
+
+Not a failure, but a limit I built into the run and should not let a reader mistake for signal.
+
+`--val-batches 12` at `batch_size 1` means each validation point is computed on **12 sequences out
+of the 68-example validation split**. The observed swing:
+
+```
+Iter 200  Val 0.133
+Iter 300  Val 0.212     <- looked like overfitting onset
+Iter 400  Val 0.091     <- new minimum; the rise was sampling noise
+```
+
+At iter 300 I flagged the increase as possible overfitting and deliberately declined to act on it
+until iter 400. That was the right call, and iter 400 showed the rise was noise — but the episode
+demonstrates the real point: **at n=12, this curve cannot distinguish a genuine 0.05–0.10 change
+from sampling variance.** Any narrative built on individual validation points in this run would be
+reading noise.
+
+Why it was set that way: each validation pass costs ~70–90 s, and at 8 evaluations across the run a
+full 68-example validation would have added ~25 minutes of wall clock on a machine already running
+~3.2 h. That was a defensible trade, but it bought speed at the cost of resolution, and the
+resolution is what a training curve is *for*.
+
+This does not affect the Stage 2 verdict. 2C evaluates on the full 35-question hand-authored eval
+set, which is the only measurement in this project that can show real improvement — validation loss
+here selects checkpoints at best, and even that only coarsely.
