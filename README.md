@@ -11,6 +11,11 @@ Results in one line: **11/20 on the development gold set, 8/9 on a held-out set 
 documents.** Those numbers are not comparable — see [Known limitations](#7-known-limitations)
 before reading either as a capability claim.
 
+> **Stage 2** (LoRA fine-tuning on Qwen2.5-**3B**, and the three-arm comparison) is documented
+> separately in **[STAGE2_README.md](STAGE2_README.md)**, with `MEMO_STAGE2.md` as its write-up.
+> Sections 1–5 below are a prerequisite for it: Stage 2 needs the same environment, corpus and
+> index. Stage 2's results reproduce in ~25 minutes **without** retraining.
+
 ---
 
 ## 1. Prerequisites

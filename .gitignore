@@ -1,4 +1,11 @@
 *.safetensors
+
+# EXCEPTION: the trained LoRA adapter must be committed or Stage 2 is not reproducible.
+# The clean-clone test caught this — a stranger got adapter_config.json (963 B) but no weights,
+# so the adapter could not be loaded and the whole three-arm comparison was unrunnable.
+# 26.6 MB, which is fine for git. The 200/400/600/800 training checkpoints stay ignored:
+# they are 26.6 MB each and are only needed to re-examine checkpoint choice, not to reproduce.
+!results/adapters/*/adapters.safetensors
 *.gguf
 mlx_model/
 m-fp16/

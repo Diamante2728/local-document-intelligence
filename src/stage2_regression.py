@@ -17,6 +17,7 @@ ability for a narrow win is a finding, not something to bury.
 """
 import argparse
 import glob
+import os
 import json
 import random
 import re
@@ -26,8 +27,24 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BASE_3B = "mlx-community/Qwen2.5-3B-Instruct-4bit"
 ADAPTER = str(REPO_ROOT / "results" / "adapters" / "multidoc_r8")
-ARC_GLOB = ("/Users/mangilipallinagaraj/.cache/huggingface/hub/datasets--allenai--ai2_arc/"
-            "**/*.parquet")
+def _arc_glob():
+    """Locate the ARC parquet files in the local HF cache.
+
+    Was a hardcoded absolute path to the author's home directory, which the Stage 2 clean-clone
+    test caught: the regression suite could not run on any other machine. Honours HF_HOME and
+    HF_HUB_CACHE the way huggingface_hub does, then falls back to the documented default.
+    """
+    roots = []
+    if os.environ.get("HF_HUB_CACHE"):
+        roots.append(os.environ["HF_HUB_CACHE"])
+    if os.environ.get("HF_HOME"):
+        roots.append(os.path.join(os.environ["HF_HOME"], "hub"))
+    roots.append(os.path.expanduser("~/.cache/huggingface/hub"))
+    for r in roots:
+        pat = os.path.join(r, "datasets--allenai--ai2_arc", "**", "*.parquet")
+        if glob.glob(pat, recursive=True):
+            return pat
+    return os.path.join(roots[-1], "datasets--allenai--ai2_arc", "**", "*.parquet")
 
 ARC_SYSTEM = ("Answer the multiple-choice question. Reply with ONLY the letter of the correct "
               "choice (A, B, C, D, or E). No explanation.")
@@ -92,7 +109,12 @@ def load_arc(n_per_split=60, seed=13):
     import pyarrow.parquet as pq
     rng = random.Random(seed)
     out = []
-    for path in sorted(glob.glob(ARC_GLOB, recursive=True)):
+    paths = sorted(glob.glob(_arc_glob(), recursive=True))
+    if not paths:
+        raise SystemExit(
+            "ARC parquet files not found in the HF cache. Fetch them once with:\n"
+            "  python -c \"from huggingface_hub import snapshot_download; snapshot_download('allenai/ai2_arc', repo_type='dataset')\"")
+    for path in paths:
         split = "ARC-Challenge" if "Challenge" in path else "ARC-Easy"
         t = pq.read_table(path).to_pylist()
         # Fixed seed and a fixed slice so base and tuned see IDENTICAL questions. Sampling
