@@ -81,3 +81,81 @@ question prompt shape is the proximate cause, and **that is fixable by decomposi
 per document — a plumbing change, not a model change.** Fine-tuning is being asked to compensate
 for a prompt-construction problem. Whether that is the right engineering call is precisely what
 2C(iii) must adjudicate, using the prompted-only baseline as the comparison.
+
+---
+
+# Appendix — training-set sampling against the M01/M02 pattern
+
+Data only, recorded during the Stage 2 verification pass. No conclusions drawn here.
+
+## Method
+
+Random sample (seed 2026) of 20 from the 689 examples in `data/train_multidoc.jsonl`.
+
+Classified MATCH when all of: context contains exactly ONE document, question is compound,
+target answers the supported half and contains the recorded figure. Classified NEGATIVE when
+`kind == "negative"` and the target is the literal string `NOT_IN_CONTEXT`.
+
+## Result
+
+```
+MATCH (single-doc context, compound question, partial answer)   13/20
+NEGATIVE (target is NOT_IN_CONTEXT)                              7/20
+neither                                                          0/20
+```
+
+Sample kind distribution: `second` 10, `negative` 7, `first` 3.
+Full-set kind distribution: `second` 263, `first` 260, `negative` 166 (n=689).
+
+All 20 sampled examples had exactly one document in context. None presented two documents.
+
+## The 7 NEGATIVE examples in the sample, verbatim
+
+```
+ 8. op=aggregation
+    Q: Add together space administration science from the Treasury monthly statement and
+       valuation capital consumption adjustments from the BEA GDP release.
+    A: NOT_IN_CONTEXT
+
+10. op=contradiction
+    Q: Check the OECD Economic Outlook annex against the Census poverty report: state rest
+       world world and der aged older, and flag any discrepancy.
+    A: NOT_IN_CONTEXT
+
+11. op=lookup_then_combine
+    Q: Look up dap urea exports china (the World Bank commodity markets outlook) and fourth
+       quarter downward revision (the BEA GDP release). Present the two values side by side.
+    A: NOT_IN_CONTEXT
+
+12. op=lookup_then_combine
+    Q: I need two numbers: copper lme grade minimum from the World Bank commodity markets
+       outlook, and rates chain-type price indexes from the BEA personal income report.
+    A: NOT_IN_CONTEXT
+
+14. op=contradiction
+    Q: Do the Census FT-900 trade release and the Federal Reserve Monetary Policy Report agree?
+       Give gem diamonds from the first and urban economics vol from the second...
+    A: NOT_IN_CONTEXT
+
+15. op=lookup_then_combine
+    Q: First find efficiency measured kilowatt hours in the EPA automotive trends summary, then
+       find office balance payments division in the Census FT-900 trade release...
+    A: NOT_IN_CONTEXT
+
+19. op=aggregation
+    Q: Add together liability basis table line from the BEA international transactions release
+       and ual income median from the Fed Survey of Consumer Finances...
+    A: NOT_IN_CONTEXT
+```
+
+## Observed topic-phrase quality in the NEGATIVE sample
+
+Topic phrases extracted from source text in the above: `rest world world`, `der aged older`,
+`ual income median`, `office balance payments division`, `liability basis table line`,
+`rates chain-type price indexes`, `dap urea exports china`.
+
+## Coverage note
+
+`kind` values present in the generator: `first`, `second`, `negative`. Counts over all 689:
+`first` 260, `second` 263, `negative` 166. No `kind` exists for a single document supporting
+both halves of the compound question.
