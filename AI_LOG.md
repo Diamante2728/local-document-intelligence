@@ -708,7 +708,8 @@ it could answer.
 
 ### Stated limit on diversity
 
-13 template skeletons bound the *syntactic* variety, even though all 699 questions are textually
+13 template skeletons bound the *syntactic* variety, even though all 689 shipped questions (699 at
+the time this note was written, before the token-budget gate rejected 9 more) are textually
 distinct (mean pairwise 5-gram Jaccard 0.009) because their subject matter is drawn from the real
 corpus. A model could overfit the skeletons rather than the task. The eval set is hand-authored and
 shares none of these templates, so that failure mode would show up as a flat eval result — it is

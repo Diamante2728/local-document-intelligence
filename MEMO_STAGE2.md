@@ -3,12 +3,19 @@
 Apple M1, 8 GB. Everything below ran offline on this machine. No cloud API was used for training,
 for synthetic data generation, or for evaluation.
 
+**AI disclosure: see §2 (pre-registration correction) and §8 (four build failures + two measurement
+errors).** Full log in `AI_LOG.md`, whose corrections table is at the top of that file.
+
 ---
 
 ## 1. The headline
 
-I built 699 training examples, fine-tuned Qwen2.5-3B-Instruct with LoRA, and measured the result
-three ways against a hand-authored 35-question eval set.
+I built **689** training examples, fine-tuned Qwen2.5-3B-Instruct with LoRA, and measured the
+result three ways against a hand-authored 35-question eval set.
+
+(700 generated, 11 rejected by QC, **689 shipped** = 621 train + 68 validation. An earlier draft
+said 699: that was the count after QC run 4, before the token-budget gate added in response to
+failure 1 rejected 9 more examples. 689 is the number that was actually trained on.)
 
 **The fine-tune made the system worse, and the reason is that it never trained the skill it was
 supposed to train.**
@@ -56,8 +63,8 @@ question, and a target that answers the supported half. That faithfully reproduc
 condition*. It does not contain the *skill*. The model was taught to produce a partial answer from a
 single document, roughly 700 times, and it learned that thoroughly.
 
-Three example kinds existed: `first` (260), `second` (263), `negative` (166). There was no kind
-where one document supports **both** halves. So "always disclaim the other half" was never
+Three example kinds existed: `first` (260), `second` (263), `negative` (166) — 689 total, of which
+negatives are **24.1%**. There was no kind where one document supports **both** halves. So "always disclaim the other half" was never
 contradicted by a counter-example, and the model generalised it into an unconditional rule.
 
 ## 4. What broke, mechanically
@@ -128,9 +135,12 @@ touches them.
 - **Stage 1 regression, n=8 per type.** One question is worth 12.5 points. Numeric shows
   `+0.0%`, but that is **N03 gained and N04 lost** — two of eight answers changed and netted zero.
   It is not "no effect."
-- **Validation loss is not evidence.** `valid.jsonl` shares a generator with `train.jsonl`, so its
-  fall to 0.057 shows the model learned the generated format, which was never in doubt. The figure
-  carries that caveat in its own legend.
+- **Validation loss is not evidence.** `valid.jsonl` shares a generator with `train.jsonl`, so a
+  falling validation loss shows only that the model learned the *generated* format, which was never
+  in doubt. The figure carries that caveat in its own legend. For the record, the series ends at
+  **0.120 at iter 800**; its minimum was **0.057 at iter 700**. An earlier draft of this memo cited
+  0.057 as though it were the final value — it is the best point, not the last one, and at
+  `--val-batches 12` (12 of 68 sequences) the two are not distinguishable from noise anyway.
 - **ARC 0.0% was wrong and I reported it.** See §8.
 
 ## 8. What went wrong while doing this
