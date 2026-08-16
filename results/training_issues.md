@@ -205,3 +205,168 @@ resolution is what a training curve is *for*.
 This does not affect the Stage 2 verdict. 2C evaluates on the full 35-question hand-authored eval
 set, which is the only measurement in this project that can show real improvement — validation loss
 here selects checkpoints at best, and even that only coarsely.
+
+---
+
+## Failure 3 — the evaluation run thrashed swap and stalled (found in 2C, not 2B)
+
+Recorded here because it invalidated measurements and had to be fixed before any 2C number could
+be trusted.
+
+### Symptom
+
+The arm-1 evaluation stopped producing rows. The progress ticker read `base=24/35` twice, twelve
+minutes apart — six questions should have completed in that window.
+
+Not an obvious crash: the process was **alive**, but at **1.1% CPU**.
+
+### Diagnosis
+
+A stack sample (`sample <pid>`) ruled out a deadlock immediately — the process was inside a normal
+MLX generation loop:
+
+```
+mlx::core::async_eval(...)
+  mlx::core::eval_impl(...)          960/993 samples
+    std::condition_variable::wait    <- waiting on the GPU
+  mlx::core::QuantizedMatmul::eval_gpu
+    mlx::core::qmv(...)
+```
+
+It was generating, just pathologically slowly. The reason was memory:
+
+```
+python3.11 RSS            7,830 MB      <- on an 8 GB machine
+vm.swapusage used         4,737 MB
+system memory free        6%
+```
+
+Killing the process dropped swap from **4,737 MB to 2,054 MB** immediately, which confirmed the
+process was the cause rather than a victim of unrelated system pressure.
+
+### Root cause
+
+MLX caches freed Metal buffers for reuse. In a long-lived evaluation process asking many questions
+of **varying sequence length**, that cache grows monotonically — each new shape allocates rather
+than reusing. Nothing in the pipeline ever released it. Per-question latency degraded from ~80 s
+early in the run to **over 17 minutes** by question 25, as the machine moved from RAM to swap.
+
+Training never hit this: `mlx_lm.lora` runs fixed-shape batches under a bounded seq length, so its
+cache reaches a steady state. Peak memory there was flat at 4.6–4.7 GB for three hours. The
+evaluation harness has the opposite shape — every question is a different length — which is
+exactly the workload that defeats a size-keyed buffer cache.
+
+### Fix
+
+`src/qa/llm.py` gains `free_gpu_cache()` (`mx.clear_cache()`) and `cache_limit_gb()`
+(`mx.set_cache_limit`). The harness calls the former **between questions** and caps the cache at
+1 GB on load. Each result row now also records `rss_gb`, so if this ever regrows it shows up as
+data rather than as an unexplained latency blow-out.
+
+### What it cost, stated plainly
+
+The first 24 arm-1 results had **contaminated latency measurements** — accuracy is unaffected
+(slowness does not change a greedy-decoded output), but the timing numbers were meaningless. That
+arm was re-run from scratch rather than resumed, so no contaminated timing survives into the
+reported results.
+
+### Relation to the earlier Metal OOMs
+
+Stage 1 hit `kIOGPUCommandBufferCallbackErrorOutOfMemory` twice, both times because **I** ran
+embedding work concurrently with a benchmark holding the 7B model. That was an operator error and
+the lesson was "one model on the GPU at a time" — a rule this run followed. This failure is
+different and was not covered by that rule: a **single** process, obeying it perfectly, still
+exhausted memory through unbounded cache growth over time. The earlier lesson was necessary but
+not sufficient, and I had assumed it was sufficient.
+
+---
+
+## Failure 4 — the entire arm-1 evaluation ran on the wrong model
+
+The most consequential failure in Stage 2, and the one that would have been easiest to publish
+without noticing.
+
+### Symptom
+
+Arm 2 (fine-tuned) completed all 35 questions in under five minutes — arm 1 had taken ~115 s per
+question — and scored 0/35. Every row carried the same error:
+
+```
+ValueError: [matmul] Last dimension of first input with shape (1,1405,3584)
+must match second to last dimension of second input with shape (2048,8).
+```
+
+`3584` is Qwen2.5-**7B**'s hidden size. `2048` is the **3B**'s, and the LoRA adapter is 3B-shaped.
+The pipeline was running the 7B.
+
+### Root cause — a Python default-argument binding bug I wrote
+
+```python
+MODEL_ID = "mlx-community/Qwen2.5-7B-Instruct-4bit"
+
+def generate_text(prompt, max_tokens=512, system=None, model_id: str = MODEL_ID):
+    model, tokenizer = get_llm(model_id)
+```
+
+A default argument is evaluated **once, at function-definition time**. The 2C harness sets
+`llm_mod.MODEL_ID = BASE_3B` before running an arm, but `generate_text`'s default had already been
+bound to the 7B at import. Reassigning the module global changed nothing.
+
+### What it cost
+
+**Arm 1's completed 35-question result — 4/35, 0/26 cross-document — was the 7B's score, not the
+3B's.** I had already reported that number, along with a breakdown by operation and a paragraph
+about what it implied. It was measuring a model that is not in the experiment. Discarded and re-run.
+
+### Why it surfaced at all
+
+Only because the fine-tuned arm existed. A LoRA adapter has a fixed shape, so applying a 3B adapter
+to 7B weights throws immediately and loudly. **Without arm 2, arm 1 and arm 3 would both have run
+on the 7B, produced entirely plausible numbers, and the comparison would have been published as a
+3B before/after.** Nothing in the output would have looked wrong — the answers were well-formed,
+latency was in a believable range, and the accuracy pattern (0/26 cross-doc, 4/9 controls) told a
+coherent story that matched the Stage 1 diagnosis perfectly.
+
+That is the uncomfortable part: the wrong-model result was *more* convincing than a noisy correct
+one would have been, because it confirmed what I expected.
+
+### The keyed cache worked; it just was not reached
+
+`get_llm` was deliberately given a `(model_id, adapter)` cache key in 2B specifically so that
+switching arms could not silently reuse the previous model. That guard was correct and did its job
+— it detected the mismatch. But it keyed on the model_id it was *handed*, and the caller was
+handing it a stale constant. A guard downstream of the corrupted value cannot catch corruption of
+that value.
+
+### Fix
+
+`model_id` now defaults to `None` and resolves to the current `MODEL_ID` **at call time**:
+
+```python
+def get_llm(model_id: str = None, adapter_path: str = None):
+    model_id = model_id or MODEL_ID          # resolved at CALL time, never at def time
+```
+
+Verified by loading and checking a weight shape: `q_proj` scales `(2048, 32)` confirms the 3B.
+
+### Stage 1 impact — checked, and there is none
+
+`src/quant/bench.py` has the same `llm_mod.MODEL_ID = model_id` pattern, so its `--model` flag was
+latently broken too. But no reported Stage 1 number came from it:
+
+- **INT4** ran with `model_id=None`, where the def-time default *is* the intended 7B-4bit. Correct.
+- **INT8** was measured by a standalone attempt script that loaded explicitly. The captured log
+  shows `requires 7717 MB` — the 8-bit footprint, roughly double 4-bit's — so the INT8 weights were
+  genuinely loaded. Correct.
+- **FP16** was never run.
+
+So nothing in `results/quant_table.md` needs retracting. `bench.py --model` was non-functional and
+never produced a published figure; it is fixed by the same change.
+
+### Lesson
+
+Failures 1 and 2 were instruments measuring the wrong quantity. This one is worse: the instrument
+measured a *different system* and reported confidently about it. The only reason it was caught is
+that one arm of the experiment was physically incapable of running on the wrong model. Designing
+comparisons so that a misconfiguration **cannot** produce a plausible result — rather than trusting
+that it will look wrong — is the actual takeaway.

@@ -1,0 +1,9 @@
++./run_2c.sh:5> PY=/Users/mangilipallinagaraj/anaconda3/envs/doc-intel/bin/python 
++./run_2c.sh:6> /Users/mangilipallinagaraj/anaconda3/envs/doc-intel/bin/python -m src.stage2_compare --arm base
+Fetching 9 files:   0%|          | 0/9 [00:00<?, ?it/s]Fetching 9 files: 100%|██████████| 9/9 [00:00<00:00, 5257.48it/s]
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+[base] resuming: 24 already complete
+Loading weights:   0%|          | 0/199 [00:00<?, ?it/s]Loading weights: 100%|██████████| 199/199 [00:00<00:00, 5903.29it/s]
+Fetching 9 files:   0%|          | 0/9 [00:00<?, ?it/s]Fetching 9 files: 100%|██████████| 9/9 [00:00<00:00, 5093.61it/s]
+/Users/mangilipallinagaraj/anaconda3/envs/doc-intel/lib/python3.11/multiprocessing/resource_tracker.py:254: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '

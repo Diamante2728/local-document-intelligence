@@ -64,6 +64,83 @@ PROSE_SYSTEM = (
     "Keep the answer to 1-3 sentences."
 )
 
+# ---------------------------------------------------------------------------------------------
+# Stage 2C arm 3 — the prompted-only baseline.
+#
+# Both flags default to False so Stage 1 behaviour and arms 1/2 are untouched. The 2C harness
+# turns them on for arm 3 only.
+#
+# This arm exists to test the pre-registered hypothesis that the multi-doc failures are a
+# PROMPT-CONSTRUCTION defect rather than a model deficiency, and it is given deliberately equal
+# effort to the fine-tune: real few-shot examples AND real per-document decomposition. A weak
+# baseline here would rig the comparison in fine-tuning's favour and destroy the value of the test.
+# ---------------------------------------------------------------------------------------------
+MULTIDOC_DECOMPOSE = False   # rewrite the compound question per document BEFORE retrieval
+PROSE_FEWSHOT = False        # prepend worked examples of partial answering
+
+# Few-shot examples teach the same behaviour the LoRA was trained on: answer the half this
+# document supports, name the half it does not. Written by hand, drawn from documents and figures
+# that appear in NO eval question, so this arm is not given a free hint the other arms lack.
+FEWSHOT_BLOCK = """Here are worked examples of how to answer.
+
+Example 1
+Excerpts:
+[treasury_monthly_statement_2024_06 p3] Total receipts for the month were $466,258 million, ...
+Question: Both the Treasury monthly statement and the EPA automotive trends summary cover this
+period. What total receipts does Treasury report, and what fleet CO2 average does EPA report?
+Answer: The Treasury monthly statement reports total receipts of $466,258 million (p3). These
+excerpts contain nothing about the EPA fleet CO2 average; that figure is in a different document.
+
+Example 2
+Excerpts:
+[usda_wasde_2026_06 p12] Season-average farm price is projected at $4.20 per bushel, ...
+Question: Compare the projected farm price in the USDA WASDE report against retail food inflation
+in the Census release. Give both figures.
+Answer: The USDA WASDE report projects a season-average farm price of $4.20 per bushel (p12). The
+excerpts here do not cover retail food inflation from the Census release.
+
+Example 3
+Excerpts:
+[census_housing_vacancies p2] The homeowner vacancy rate was 0.9 percent in the first quarter, ...
+Question: What is the rental vacancy rate in the OECD annex, and the homeowner vacancy rate in the
+Census housing report?
+Answer: The Census housing report gives a homeowner vacancy rate of 0.9 percent (p2). Nothing in
+these excerpts addresses the OECD annex rental vacancy rate.
+
+Now answer the real question the same way: give whatever this document supports, and say plainly
+which part it does not cover. Only reply NOT_IN_CONTEXT if the excerpts support NEITHER part.
+"""
+
+DECOMPOSE_SYSTEM = (
+    "You rewrite a compound question into the single sub-question that ONE named document can "
+    "answer. Keep the wording of the relevant half. Do not answer it. Output only the "
+    "sub-question, nothing else."
+)
+
+
+def decompose_for_doc(question, doc_id):
+    """Rewrite a compound question into the part `doc_id` is expected to answer.
+
+    Run BEFORE retrieval, which is the point. A 40-word question naming two documents produces a
+    diluted query embedding; once the search is filtered to one document the correct chunk no
+    longer ranks (measured pre-training: this is why M03 and H09 failed at the retrieval layer,
+    not the reasoning layer). Narrowing the query first is what repairs that.
+    """
+    from .llm import generate_text
+    prompt = (f"Document: {doc_id}\n"
+              f"Compound question: {question}\n\n"
+              f"Sub-question answerable from that document alone:")
+    try:
+        text, _ = generate_text(prompt, max_tokens=64, system=DECOMPOSE_SYSTEM)
+    except Exception:
+        return question                      # never let this arm fail closed
+    sub = text.strip().split("\n")[0].strip().strip('"')
+    # Guard against a degenerate rewrite that would hand this arm a worse query than it started
+    # with; falling back to the original keeps the comparison fair rather than flattering.
+    if len(sub) < 12 or len(sub) > 3 * len(question):
+        return question
+    return sub
+
 
 _bm25 = None
 
@@ -125,7 +202,8 @@ def answer_prose(question, conn, prose_index, prose_map, top_k=TOP_K_PROSE, doc_
                           "score": round(h["score"], 4)})
 
     prompt = "Excerpts:\n\n" + "\n\n".join(excerpts) + f"\n\nQuestion: {question}"
-    text, _ = generate_text(prompt, max_tokens=256, system=PROSE_SYSTEM)
+    system = (PROSE_SYSTEM + "\n\n" + FEWSHOT_BLOCK) if PROSE_FEWSHOT else PROSE_SYSTEM
+    text, _ = generate_text(prompt, max_tokens=256, system=system)
     text = text.strip()
 
     notes = []
@@ -260,14 +338,19 @@ def answer_multidoc(question, conn, prose_index, prose_map, table_index, table_m
         # The numeric path has no equivalent signal — it always produces a value. So ask the arm
         # that can say "I don't know" first, and only fall through when it does.
         # Bonus: this is also cheaper — one LLM call per document when prose succeeds, not two.
-        sub = answer_prose(question, conn, prose_index, prose_map, doc_ids={doc_id})
+        # Arm 3 only: narrow the question to this document BEFORE retrieving from it.
+        q_doc = decompose_for_doc(question, doc_id) if MULTIDOC_DECOMPOSE else question
+        sub = answer_prose(q_doc, conn, prose_index, prose_map, doc_ids={doc_id})
         mode = "prose"
         if sub.get("confidence", 0.0) <= 0.0:
-            numeric_sub = answer_numeric(question, conn, table_index, table_map,
+            numeric_sub = answer_numeric(q_doc, conn, table_index, table_map,
                                          doc_ids={doc_id}, path_label="multi-doc")
             if numeric_sub.get("value") is not None:
                 sub, mode = numeric_sub, "numeric"
-        per_doc.append({"doc_id": doc_id, "mode": mode, **sub})
+        entry = {"doc_id": doc_id, "mode": mode, **sub}
+        if MULTIDOC_DECOMPOSE and q_doc != question:
+            entry["sub_question"] = q_doc
+        per_doc.append(entry)
 
     contributing = [p for p in per_doc
                     if p.get("value") is not None or p.get("confidence", 0) > 0]
