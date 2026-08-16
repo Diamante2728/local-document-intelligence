@@ -32,6 +32,51 @@ ARC_GLOB = ("/Users/mangilipallinagaraj/.cache/huggingface/hub/datasets--allenai
 ARC_SYSTEM = ("Answer the multiple-choice question. Reply with ONLY the letter of the correct "
               "choice (A, B, C, D, or E). No explanation.")
 
+# Generation budget for ARC.
+#
+# The first run used max_tokens=8. That is enough for the base model, which replies with a bare
+# letter, but NOT for the fine-tuned model, whose replies run 20-40+ tokens and place the letter
+# mid-sentence. Three sampled fine-tuned outputs contained the correct letter beyond token 8 and
+# were scored wrong. 8 tokens measured "does the model answer in one token", not "does the model
+# know the answer", so the resulting 0.0% was not a valid accuracy figure.
+ARC_MAX_TOKENS = 64
+
+
+def extract_choice(text, labels):
+    """Pull a multiple-choice answer out of free-form text.
+
+    Deliberately more careful than `re.search(r"\b([A-E1-5])\b", ...)`. At a 64-token budget the
+    fine-tuned model emits prose, and a naive scan matches the ARTICLE "A" in "According to the
+    problem..." — which would hand it spurious credit. Applied IDENTICALLY to both arms so neither
+    is advantaged.
+
+    Order of preference:
+      1. the whole reply is just a label            -> 'C'
+      2. a label in parentheses                     -> '...object (D).'
+      3. an explicit answer phrase                  -> 'the answer is C'
+      4. a standalone label token, skipping the English article "A" before a lowercase word
+    """
+    t = text.strip()
+    valid = set(labels)
+    if t[:1] in valid and (len(t) == 1 or not t[1].isalnum()):
+        # "A certain atom has..." starts with the ARTICLE, not a choice. Same guard as below.
+        if not (t[0] == "A" and re.match(r"\s+[a-z]", t[1:])):
+            return t[0]
+    m = re.search(r"\(([A-E1-5])\)", t)
+    if m and m.group(1) in valid:
+        return m.group(1)
+    m = re.search(r"(?:answer|choice|option)\s*(?:is|:)?\s*\(?([A-E1-5])\)?\b", t, re.I)
+    if m and m.group(1) in valid:
+        return m.group(1)
+    for m in re.finditer(r"\b([A-E1-5])\b", t):
+        ch = m.group(1)
+        if ch not in valid:
+            continue
+        if ch == "A" and re.match(r"\s+[a-z]", t[m.end():]):
+            continue          # English article, not a choice
+        return ch
+    return ""
+
 
 def configure(arm):
     from .qa import llm as llm_mod
@@ -79,15 +124,14 @@ def run_arc(arm, n_per_split=60):
         prompt = f"{it['question']}\n\n{choices}\n\nAnswer:"
         t0 = time.perf_counter()
         try:
-            text, _ = generate_text(prompt, max_tokens=8, system=ARC_SYSTEM)
+            text, _ = generate_text(prompt, max_tokens=ARC_MAX_TOKENS, system=ARC_SYSTEM)
             err = None
         except Exception as e:
             text, err = "", f"{type(e).__name__}: {e}"
-        m = re.search(r"\b([A-E1-5])\b", text.strip())
-        pred = m.group(1) if m else ""
+        pred = extract_choice(text, it["labels"])
         row = {"id": it["id"], "split": it["split"], "arm": arm, "pred": pred,
                "gold": it["answer"], "correct": pred == it["answer"],
-               "raw": text.strip()[:40], "latency_s": round(time.perf_counter() - t0, 2),
+               "raw": text.strip()[:300], "latency_s": round(time.perf_counter() - t0, 2),
                "error": err}
         rows.append(row)
         with open(out_path, "a") as fh:

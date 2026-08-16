@@ -113,7 +113,24 @@ LEAP_2002_8_10387 gold=C  FULL: 'According to the food chain concept in ecology,
 | (b) abstention/disclaimer-shaped text instead of an MC answer | 26 of 29 | 6 of 6 in Sample A; 20 of 23 in Sample B |
 | (c) format/parse mismatch — correct answer present but unscored | 3 of 29 | Sample B rows above containing the gold letter |
 
-## Facts bearing on the 0.0%
+## Re-run at max_tokens=64, all 120 questions, both arms
+
+```
+base   97/120 = 80.8%   (ARC-Challenge 46/60, ARC-Easy 51/60)
+tuned   3/120 =  2.5%   (ARC-Challenge  0/60, ARC-Easy  3/60)
+
+8-token run for comparison:  base 97/120 (80.8%)   tuned 0/120 (0.0%)
+```
+
+Base identical across both budgets. Tuned diagnostics at 64 tokens:
+
+```
+empty pred (no extractable choice)   114 / 120
+output starts NOT_IN_CONTEXT          97 / 120
+pred distribution        '' 114, 'A' 4, 'D' 1, 'C' 1
+```
+
+## Facts bearing on the original 0.0%
 
 - Harness generated `max_tokens=8`. Base outputs are a bare letter (1 token) and fit. The
   fine-tuned outputs above run 20-40+ tokens and place any letter mid-sentence or later.

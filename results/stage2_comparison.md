@@ -34,11 +34,59 @@ The controls exist to tell a *multi-document reasoning* gain apart from a generi
 
 ### ARC (general reasoning, unrelated to this corpus)
 
+Measured at `max_tokens=64` for **both** arms, with an identical answer extractor.
+
 | split | base | fine-tuned | delta |
 |---|---|---|---|
 | ARC-Challenge | 46/60 (76.7%) | 0/60 (0.0%) | **-76.7%** |
-| ARC-Easy | 51/60 (85.0%) | 0/60 (0.0%) | **-85.0%** |
-| OVERALL | 97/120 (80.8%) | 0/120 (0.0%) | **-80.8%** |
+| ARC-Easy | 51/60 (85.0%) | 3/60 (5.0%) | **-80.0%** |
+| OVERALL | **97/120 (80.8%)** | **3/120 (2.5%)** | **-78.3%** |
+
+### The first ARC measurement was invalid — 0.0% was a harness artefact
+
+The original run used `max_tokens=8`. That suffices for the base model, which replies with a bare
+letter, but not for the fine-tuned model, whose replies run 20-40+ tokens and place any letter
+mid-sentence. Answers were being cut off before they could be scored.
+
+| | 8-token run | 64-token re-run |
+|---|---|---|
+| base | 97/120 (80.8%) | **97/120 (80.8%)** |
+| fine-tuned | 0/120 (0.0%) | **3/120 (2.5%)** |
+
+**The base score is identical across both budgets**, which is the control: raising the budget did
+not inflate the baseline, so the change in the tuned arm is a property of the tuned model and not
+of the harness. The honest figure is **2.5%**, not 0.0%.
+
+### This is output-format collapse, not catastrophic forgetting
+
+The distinction matters and the raw outputs settle it. Of 29 sampled fine-tuned outputs
+re-generated in full, **0 were valid multiple-choice answers that picked the wrong option** — the
+signature of degraded reasoning. Instead:
+
+```
+  output starts with NOT_IN_CONTEXT     97 / 120
+  no extractable choice at all         114 / 120
+  any letter extracted                   6 / 120   (3 right, 3 wrong)
+```
+
+and the non-abstaining outputs are document-citation language applied to a task with no documents:
+
+```
+'This document gives decomposers as the answer (C). The other parts of the question, such as
+ predators, prey, and producers, are not covered by the text provided.'
+
+'This document gives abyssal plains as 10,070 (p. 10). The other part of the question,
+ continental slopes, is not covered by the text provided.'
+
+'According to the problem, HIV infects helper T cells (A). These cells are part of the immune
+ system that is compromised when HIV is present.'
+```
+
+ARC items contain no documents, no excerpts and no page numbers. The model is citing pages that do
+not exist and declining to answer "the other part of the question" on questions that have no parts.
+It overfit a response pattern hard enough that it no longer recognises when the pattern does not
+apply. Whether the underlying science knowledge survives is **not** measured by this suite — what is
+measured is that the model can no longer express it in the required format.
 
 ### Stage 1 prose / numeric questions (real pipeline)
 
@@ -47,6 +95,22 @@ The controls exist to tell a *multi-document reasoning* gain apart from a generi
 | numeric | 1/8 (12.5%) | 1/8 (12.5%) | **+0.0%** |
 | prose | 6/8 (75.0%) | 5/8 (62.5%) | **-12.5%** |
 | OVERALL | 7/16 (43.8%) | 6/16 (37.5%) | **-6.2%** |
+
+**n=8 per type. One question is worth 12.5 points**, so every delta in this table is one or two
+questions and none of them is separable from noise at this sample size.
+
+Per-question movement, which the aggregate hides:
+
+| question | type | base | tuned | |
+|---|---|---|---|---|
+| N03 | numeric | wrong | **right** | gained |
+| N04 | numeric | **right** | wrong | lost |
+| P05 | prose | **right** | wrong | lost |
+| other 13 | — | unchanged | unchanged | |
+
+The numeric row is **not** "no effect": it is one question gained and one lost, netting zero. Two
+of 8 numeric answers changed. Reporting `+0.0%` alone would imply the adapter left the numeric
+path untouched, which is not what happened.
 
 ## (iii) Verdict
 

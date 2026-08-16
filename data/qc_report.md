@@ -60,9 +60,18 @@ python -m src.train.qc_multidoc --inp data/ablation.raw.jsonl --out /tmp/abl.jso
 
 The gate rejects 78.4% of defective data and 1.6% of clean data. Both numbers are needed.
 
-## 3. Three actual rejected examples
+## 3. Three actual rejected examples — from the ABLATION VALIDATION RUN
 
-Verbatim from the ablation batch, since the shipped batch's rejections are all length-related.
+**Provenance, stated explicitly.** These three come from the `--no-prefilter` **ablation
+validation run** (§2), not from the batch that produced `data/train_multidoc.jsonl`. The shipped
+batch rejected 11 examples, all length-related (`target_truncated_to_zero` 9,
+`ungrounded_figure` 1, `target_partly_truncated` 1) — those are in `data/qc_rejected.jsonl`.
+
+The raw JSONL records for the three below were overwritten when the shipped QC run rewrote
+`data/qc_rejected.jsonl`, and `data/ablation.raw.jsonl` was deleted after the ablation. The text
+and reason are preserved verbatim here; reproducing the raw records would require re-running the
+seeded ablation. They are shown because the shipped batch's rejections are all one category and
+would not illustrate what the gate catches.
 
 ### (a) `degenerate_topic` — the question is nonsense
 
