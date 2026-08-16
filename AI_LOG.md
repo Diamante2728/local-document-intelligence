@@ -713,3 +713,40 @@ distinct (mean pairwise 5-gram Jaccard 0.009) because their subject matter is dr
 corpus. A model could overfit the skeletons rather than the task. The eval set is hand-authored and
 shares none of these templates, so that failure mode would show up as a flat eval result — it is
 detectable, not hidden.
+
+## Stage 2C — verification pass corrections
+
+Two claims I reported that the verification pass overturned:
+
+**1. ARC "0.0% — catastrophic forgetting" was wrong on both the number and the framing.**
+The regression harness generated with `max_tokens=8`. That fits the base model (a bare letter) but
+truncates the fine-tuned model's 20-40 token replies before any answer letter appears. Re-ran all
+120 questions at 64 tokens for BOTH arms with a hardened extractor: base **97/120 (80.8%),
+identical to the 8-token run** — the control showing the budget change did not inflate the baseline
+— and tuned **3/120 (2.5%)**. The honest figure is 2.5%.
+
+The framing was also wrong. "Catastrophic forgetting" implies degraded reasoning. Of 29 sampled
+outputs re-generated in full, **zero were valid multiple-choice answers picking the wrong option**.
+97/120 begin with `NOT_IN_CONTEXT`; the rest emit document-citation language ("This document gives
+decomposers as the answer (C)... not covered by the text provided") on a task with no documents,
+citing page numbers that do not exist. That is **output-format collapse**, a narrower and more
+specific failure. Whether the underlying knowledge survived is not measured by this suite.
+
+**2. "Fine-tuning was the wrong tool here" is not supported by what was run.**
+A 20-example random sample of the training set found **0 of 20 examples that ever presented two
+documents**; the generator has no example kind that does. The training data was structurally
+single-document throughout, so cross-document combination was never demonstrated to the model.
+
+The accurate claim: *this fine-tuning attempt never trained the target skill.* What it produced was
+general-purpose abstention, which explains the cross-doc gain (2/26, matching prompting), the
+control collapse, and the ARC regression together. **Whether fine-tuning with genuine two-document
+examples would perform differently remains untested.**
+
+This one is worth dwelling on. "Fine-tuning was the wrong tool" was **pre-registered before
+training** as a plausible honest outcome, with a mechanism attached. When the numbers came in it
+looked confirmed, and I reported it as such. The pre-registration made a wrong conclusion *more*
+tempting rather than less — it gave me a ready-made story that fit the data without requiring me to
+check whether the experiment had tested what the story claimed. Pre-registering a hypothesis does
+not license accepting it; it only stops you inventing one afterwards.
+
+Both corrections were prompted by user-directed verification checks, not by my own review.

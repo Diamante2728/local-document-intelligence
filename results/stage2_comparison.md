@@ -116,9 +116,25 @@ path untouched, which is not what happened.
 
 - base **14.3%** · fine-tuned **5.7%** · prompted-only **14.3%**
 
-**The prompted-only baseline BEATS the fine-tune.** Recorded as the outcome pre-registered in `results/eval_expansion_notes.md`: the multi-doc failures were a prompt-construction defect, and fine-tuning was not the right tool for them.
+**This fine-tuning attempt never trained the target skill.** The training data was structurally
+single-document throughout — a 20-example random sample found **0 of 20 examples that ever
+presented two documents**, and the generator has no example kind that does. Cross-document
+combination was therefore never demonstrated to the model. What the run produced instead was
+**general-purpose abstention**, which explains both results at once: the cross-document gain
+(2/26, exactly matching prompting) and the control and ARC regressions.
 
----
+**Whether fine-tuning with genuine two-document examples would perform differently remains
+untested.**
+
+This replaces the earlier framing, "fine-tuning was the wrong tool here." That claim is not
+supported by what was run. The method was never given the task: every training example showed one
+document and asked the model to answer half a question. A conclusion about whether LoRA can teach
+cross-document reasoning would require training data that contains cross-document reasoning, and
+this run did not have any.
+
+What *is* supported: **prompted-only decomposition matches the fine-tune's entire measured benefit
+at none of its cost** (no training, no adapter, no regression), so on the evidence available the
+prompting route is the one to ship.
 
 ## Mechanism — why the fine-tune regressed
 
